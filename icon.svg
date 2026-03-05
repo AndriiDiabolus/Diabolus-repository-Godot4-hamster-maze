@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="20" fill="#0d0d1a"/>
+  <!-- cheeks -->
+  <ellipse cx="38" cy="62" rx="13" ry="11" fill="#d89050"/>
+  <ellipse cx="90" cy="62" rx="13" ry="11" fill="#d89050"/>
+  <!-- body -->
+  <ellipse cx="64" cy="88" rx="30" ry="24" fill="#c07840"/>
+  <!-- belly -->
+  <ellipse cx="64" cy="92" rx="18" ry="16" fill="#e8c080"/>
+  <!-- head -->
+  <ellipse cx="64" cy="58" rx="27" ry="24" fill="#c07840"/>
+  <!-- left ear outer -->
+  <ellipse cx="43" cy="32" rx="11" ry="14" fill="#a05530"/>
+  <!-- right ear outer -->
+  <ellipse cx="85" cy="32" rx="11" ry="14" fill="#a05530"/>
+  <!-- left ear inner -->
+  <ellipse cx="43" cy="32" rx="6" ry="9" fill="#ffaaaa"/>
+  <!-- right ear inner -->
+  <ellipse cx="85" cy="32" rx="6" ry="9" fill="#ffaaaa"/>
+  <!-- left eye -->
+  <circle cx="53" cy="52" r="6.5" fill="#1a0800"/>
+  <circle cx="55" cy="50" r="2.5" fill="white"/>
+  <!-- right eye -->
+  <circle cx="75" cy="52" r="6.5" fill="#1a0800"/>
+  <circle cx="77" cy="50" r="2.5" fill="white"/>
+  <!-- nose -->
+  <circle cx="64" cy="63" r="4" fill="#ff8888"/>
+</svg>
