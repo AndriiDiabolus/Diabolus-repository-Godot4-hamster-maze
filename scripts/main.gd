@@ -6,7 +6,7 @@ var _ham := {"x": 1, "y": 1, "burrowed": false, "burrows": 3}
 # ── Fog of war ────────────────────────────────────────────────────────
 const FOG_INNER_R: float = 3.8   # cells — fully visible
 const FOG_OUTER_R: float = 5.8   # cells — fully fogged
-const FOG_ALPHA:   float = 0.55  # max fog darkness
+const FOG_ALPHA:   float = 0.40  # max fog darkness
 
 # ── Movement timer ────────────────────────────────────────────────────
 const MOVE_INTERVAL: float = 8.0 / 60.0
@@ -637,7 +637,7 @@ func _draw_fog() -> void:
 	var ham_cy: float = _ham.y * C.CELL + C.CELL * 0.5
 	var inner_px: float = FOG_INNER_R * C.CELL
 	var outer_px: float = FOG_OUTER_R * C.CELL
-	var fog_color := Color(0.0, 0.0, 0.04)   # rgba(0,0,10) ≈ #00000a
+	var fog_color := Color(0.05, 0.05, 0.10)  # dark navy tint (matches wall theme)
 
 	for r in range(C.ROWS):
 		for col in range(C.COLS):
