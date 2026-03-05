@@ -3,6 +3,11 @@ extends Node2D
 # ── Hamster state ─────────────────────────────────────────────────────
 var _ham := {"x": 1, "y": 1, "burrowed": false, "burrows": 3}
 
+# ── Fog of war ────────────────────────────────────────────────────────
+const FOG_INNER_R: float = 3.8   # cells — fully visible
+const FOG_OUTER_R: float = 5.8   # cells — fully fogged
+const FOG_ALPHA:   float = 0.55  # max fog darkness
+
 # ── Movement timer ────────────────────────────────────────────────────
 const MOVE_INTERVAL: float = 8.0 / 60.0
 var _move_timer: float = 0.0
@@ -329,6 +334,10 @@ func _draw() -> void:
 			_llama2.state, true
 		)
 
+	# Fog of war (drawn after all game objects, before HUD)
+	if _state == "play":
+		_draw_fog()
+
 	_draw_hud()
 
 	if _state == "lost":
@@ -619,6 +628,35 @@ func _draw_win_overlay() -> void:
 		"Орехов: %d/%d   Время: %s" % [total, total, _fmt_time(_game_time_ms)],
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("#c8e878"))
 	draw_string(font, Vector2(cx - 100, cy + 108), "Enter — играть снова", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(1,1,1,0.5))
+
+
+# Port of drawFog() — hamster_maze.html lines 1439-1460
+# Per-cell radial gradient: inside innerR fully visible, outside outerR fully dark.
+func _draw_fog() -> void:
+	var ham_cx: float = _ham.x * C.CELL + C.CELL * 0.5
+	var ham_cy: float = _ham.y * C.CELL + C.CELL * 0.5
+	var inner_px: float = FOG_INNER_R * C.CELL
+	var outer_px: float = FOG_OUTER_R * C.CELL
+	var fog_color := Color(0.0, 0.0, 0.04)   # rgba(0,0,10) ≈ #00000a
+
+	for r in range(C.ROWS):
+		for col in range(C.COLS):
+			var cell_cx: float = col * C.CELL + C.CELL * 0.5
+			var cell_cy: float = r * C.CELL + C.CELL * 0.5
+			var dist: float = sqrt(
+				(cell_cx - ham_cx) * (cell_cx - ham_cx) +
+				(cell_cy - ham_cy) * (cell_cy - ham_cy)
+			)
+			var alpha: float
+			if dist <= inner_px:
+				alpha = 0.0
+			elif dist >= outer_px:
+				alpha = FOG_ALPHA
+			else:
+				alpha = FOG_ALPHA * (dist - inner_px) / (outer_px - inner_px)
+			if alpha > 0.01:
+				draw_rect(Rect2(col * C.CELL, r * C.CELL, C.CELL, C.CELL),
+					Color(fog_color.r, fog_color.g, fog_color.b, alpha))
 
 
 # ── Helpers ───────────────────────────────────────────────────────────
