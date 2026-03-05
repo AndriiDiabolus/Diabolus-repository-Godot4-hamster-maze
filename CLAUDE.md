@@ -126,7 +126,7 @@ hamster_maze_godot/
 ├── shaders/
 │   └── fog_of_war.gdshader
 └── assets/
-    └── sounds/
+	└── sounds/
 ```
 
 ### Этапы переноса
