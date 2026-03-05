@@ -4,6 +4,10 @@
 export_presets.cfg
 export_credentials.cfg
 
+# Godot UID cache files (auto-generated, not needed in VCS)
+*.uid
+*.import
+
 # OS files
 .DS_Store
 Thumbs.db

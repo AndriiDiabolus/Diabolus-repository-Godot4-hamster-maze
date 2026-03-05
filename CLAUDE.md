@@ -1,171 +1,242 @@
-# CLAUDE.md — Контекст проекта "Хомяк в Лабиринте"
+# CLAUDE.md — Контекст проекта "Хомяк в Лабиринте" (Godot 4)
 
 ## Репозитории
 - **Текущий (Godot 4):** https://github.com/AndriiDiabolus/Diabolus-repository-Godot4-hamster-maze.git
-- **Старый (HTML версия):** https://github.com/AndriiDiabolus/Diabolus-Repository.git
+- **Оригинал (HTML):** https://github.com/AndriiDiabolus/Diabolus-Repository.git
 - **Локальный путь:** `/Users/andriidiablo/Documents/Test 3.1/`
 - **Ветка:** main
 
-## Файлы проекта
-- `hamster_maze.html` — полная браузерная версия игры (Test 3.1), ~1895 строк, один файл без зависимостей
-
-## Описание игры
-Браузерная игра "Хомяк в Лабиринте" (один HTML файл, без зависимостей).
-
-### Технологии (HTML версия)
-- Чистый HTML5 + CSS + JavaScript (no framework)
-- Canvas API для рендеринга
-- Web Audio API — процедурные звуки (осцилляторы, без файлов)
-- Supabase REST API — онлайн таблица рекордов
-- PWA: manifest, apple-touch-icon, A2HS баннер
-- Язык интерфейса: русский
-
-### Константы карты
-- `CELL = 36` — размер клетки в пикселях
-- `COLS = 25`, `ROWS = 19` — размер лабиринта (25x19 клеток)
-- `HUD = 58` — высота HUD панели
-- `W = COLS * CELL = 900`, `H = ROWS * CELL = 684`
-
-### Механика игры
-- **Цель:** собрать все орехи (nuts), появляются волнами каждые 25 секунд (~35% первая волна, далее по 40% от скрытых)
-- **Хомяк:** управляется стрелками / WASD, шаг каждые 8 фреймов
-- **Синяя лама:** патрулирует (patrol/alert/chase/search), слышит на 8 клеток (ALERT_R), видит на 4 (CHASE_R); каждые 30 сек ускоряется (+1 llamaBonus, макс 8)
-- **Красная лама:** появляется через 60 секунд, независимый AI, та же логика
-- **Скорости ламы (фреймов на шаг):** patrol=32, alert=22, chase=16, search=20 (минус llamaBonus)
-- **Норы:** Пробел — спрятаться/вылезти, всего 3 норы (ham.burrows)
-- **Кроличьи норы:** 2 пары порталов (rhPairs), cooldown 60 сек, за 10 сек до открытия появляется кролик-маркер
-- **Туман войны:** innerR=3.8*CELL, outerR=5.8*CELL, evenodd fill + radial gradient
-- **Управление:** WASD / стрелки, M — музыка, Enter — рестарт, Пробел — нора
-
-### Алгоритмы (строки в файле)
-- **Генерация лабиринта** (строки 413-462): recursive backtracking + устранение тупиков (dead end removal)
-- **BFS pathfinder** (строки 465-482): поиск пути врагов, возвращает массив шагов
-- **AI лам** (строки 975-1031): `updateLlama()`, 4 состояния, `makeSearchPts()` для поиска
-- **Rabbit holes** (строки 782-833): `rhInit()`, `rhUpdate()`, `pickRHPos()`
-
-### Звуки (Web Audio API, процедурные)
-- `sfxHamStep()` — шаг хомяка (sine 920Hz)
-- `sfxLlamaStep()` — шаг ламы (triangle 130Hz)
-- `sfxNut()` — сбор ореха (трезвучие 440/554/659 Hz)
-- `sfxBurrow()` / `sfxUnburrow()` — нора (sawtooth/sine sweep)
-- `sfxEnrage()` — лама в погоне (square 700/900/1050 Hz)
-- `sfxWin()` / `sfxLose()` — победа/поражение
-- `sfxTeleport()` — кроличья нора (sine sweep x3)
-- `sfxWheee()` — хомяк крутится на победном экране
-- Фоновая музыка: BG_MEL (16 нот) + BG_BASS (6 нот), setTimeout loop
-
-### UI / UX
-- Тёмная тема: фон `#0d0d1a`, акцент `#ffd700` (золотой), синее свечение `#1e4a8a`
-- Адаптив для мобильных: d-pad кнопки (tc-up/down/left/right), кнопка норы, кнопка музыки
-- Splash-экран с правилами + таблицей рекордов (две колонки)
-- Online таблица рекордов через Supabase (lb-panel, обновление каждые 8 сек)
-- Модалка ввода никнейма (name-modal, localStorage 'hamsterName')
-- Модалка комментария к рекорду (comment-modal, PATCH в Supabase)
-- A2HS баннер (beforeinstallprompt + iOS инструкция)
-- Победный экран: анимация хомяка (~3.5 сек, WIN_DUR=210 фреймов) → win screen с leaderboard
-- Проигрыш: overlay "КОНЕЦ" + модалка ника
-
-### Supabase (онлайн рекорды)
-- URL: `https://ytipfibgtnrvtsygetnb.supabase.co`
-- Таблица: `scores` (id, uid, name, time, date, comment)
-- Игрок идентифицируется по `hamsterUID` из localStorage
-- Загрузка при старте + каждые 15 сек на сплэше, каждые 8 сек в панели
+## Критически важно
+- `hamster_maze.html` — эталонный файл (~1895 строк), **НИКОГДА НЕ ТРОГАТЬ**
+- Godot 4.6.1, GDScript, рендер Node2D + `_draw()` (без TileMap и CharacterBody2D)
+- Autoload `C` = `scripts/constants.gd` (глобальный доступ из всех скриптов)
+- Весь рендер — чистый `_draw()` + `_ell()` helper для эллипсов через `draw_colored_polygon`
+- "Няма" = пользователь говорит "всё верно/отлично"
 
 ---
 
-## Цель разработки: перенос на Godot 4
+## Файлы проекта (актуально)
 
-### Решение принято
-Пользователь выбрал **Godot 4** для дальнейшего развития игры (не Electron).
-- Причина: кроссплатформенный экспорт (Windows/Mac/Linux/Android/iOS/Web), лучшая графика, нативная производительность, визуальный редактор уровней
-
-### Что переносится 1:1 (почти дословно)
-- `makeMaze()` → `maze_generator.gd` (recursive backtracking, тот же алгоритм)
-- `bfs()` → `bfs_pathfinder.gd` (BFS, Array вместо queue)
-- `updateLlama()` + AI состояния → `llama_ai.gd`
-- `rhUpdate()` + rabbit holes логика → `rh_manager.gd`
-- Supabase fetch → `HTTPRequest` нода (те же заголовки, тот же REST API)
-
-### Соответствие компонентов HTML → Godot 4
-| HTML/JS | Godot 4 |
-|---|---|
-| Canvas 2D (CELL=36) | TileMap, TileSet 36x36 px |
-| drawMaze() | TileMap слой |
-| drawHamster() / drawLlama() | CharacterBody2D + _draw() или AnimatedSprite2D |
-| drawFog() evenodd | CanvasItem шейдер или Light2D + CanvasModulate |
-| requestAnimationFrame loop | _process(delta) |
-| mTimer (frame counter) | delta накопление |
-| Web Audio API | AudioStreamGenerator или .ogg файлы |
-| BG_MEL/BG_BASS массивы | AudioStreamPlayer + генератор |
-| Supabase fetch | HTTPRequest нода |
-| localStorage | FileAccess / ConfigFile |
-| Mobile d-pad HTML | TouchScreenButton нода |
-| Splash screen HTML | Сцена SplashScreen.tscn (Control ноды) |
-| PWA manifest | Godot export настройки |
-
-### Запланированная структура проекта Godot 4
 ```
-hamster_maze_godot/
-├── project.godot
-├── scenes/
-│   ├── Main.tscn
-│   ├── Maze.tscn               ← TileMap + maze_generator.gd
-│   ├── Hamster.tscn            ← CharacterBody2D
-│   ├── Llama.tscn              ← CharacterBody2D + llama_ai.gd
-│   ├── RabbitHolePair.tscn
-│   └── UI/
-│       ├── HUD.tscn
-│       └── SplashScreen.tscn
-├── scripts/
-│   ├── maze_generator.gd
-│   ├── bfs_pathfinder.gd
-│   ├── llama_ai.gd
-│   ├── rh_manager.gd
-│   ├── game_manager.gd
-│   └── leaderboard.gd
-├── shaders/
-│   └── fog_of_war.gdshader
-└── assets/
-	└── sounds/
+scripts/
+  constants.gd       — autoload C, все константы игры
+  maze_generator.gd  — class MazeGenerator, recursive backtracking + dead end removal
+  bfs_pathfinder.gd  — class BFSPathfinder, BFS pathfinding → Array[Vector2i]
+  llama_ai.gd        — class LlamaAI, 4 состояния (patrol/alert/chase/search)
+  rh_manager.gd      — class RHManager, 2 пары кроличьих нор (порталов)
+  main.gd            — extends Node2D, вся игровая логика + весь рендер
+scenes/
+  Main.tscn          — uid://c431j5hrtri71, Node2D + main.gd
+project.godot        — config v5, Godot 4.6, autoload C, viewport 900x742
+hamster_maze.html    — оригинальный HTML файл (reference only)
 ```
-
-### Этапы переноса
-1. **Этап 1** — Лабиринт + BFS (maze_generator.gd, bfs_pathfinder.gd) ~1 неделя
-2. **Этап 2** — Хомяк + движение (CharacterBody2D) ~2-3 дня
-3. **Этап 3** — AI лам (синяя + красная) ~1 неделя
-4. **Этап 4** — Орехи, волны, норы, порталы ~1 неделя
-5. **Этап 5** — Туман войны (шейдер fog_of_war.gdshader) ~2-3 дня
-6. **Этап 6** — HUD + UI (Control ноды) ~1 неделя
-7. **Этап 7** — Звук + Supabase leaderboard ~1 неделя
-8. **Этап 8** — Мобильные контролы + экспорт ~2-3 дня
-
-### Что улучшится в Godot 4 vs HTML
-- Туман войны — шейдер вместо Canvas clip, визуально лучше
-- Анимации — AnimatedSprite2D вместо Canvas draw
-- Звук — пространственный AudioStreamPlayer
-- Мобайл — нативный APK
-- Производительность — 60fps стабильно
-- Редактирование — TileMap редактор для уровней
 
 ---
 
-## История диалога
+## Константы (C.*)
+```gdscript
+COLS=25, ROWS=19, CELL=36, HUD=58, W=900, H=684
+CHASE_R=4, ALERT_R=8
+LSPEED_BASE = {patrol:32, alert:22, chase:16, search:20}
+RH_COOLDOWN_MS=60000, RH_DIG_MS=10000
+NUT_WAVE_INTERVAL_MS=25000, NUT_FIRST_WAVE_PCT=0.35, NUT_NEXT_WAVE_PCT=0.40
+NUT_MIN_COUNT=20, NUT_SPAWN_CHANCE=0.18
+LLAMA2_SPAWN_MS=60000, LLAMA_BONUS_INTERVAL_MS=30000, LLAMA_BONUS_MAX=8
+```
 
-### Сессия 1 (2026-03-05)
-- Открыт файл `hamster_maze.html` в VSCode
-- Привязка к репозиторию https://github.com/AndriiDiabolus/Diabolus-Repository.git
-- Создан CLAUDE.md с контекстом проекта
+---
 
-### Сессия 2 (2026-03-05, продолжение)
-- Обсуждение вариантов переноса игры: Electron vs Godot 4
-- **Решение:** развивать игру на Godot 4
-- Прочитан полный код `hamster_maze.html` (1895 строк)
-- Составлен детальный план переноса на Godot 4 с анализом реального кода
-- Новый репозиторий для Godot 4 версии: https://github.com/AndriiDiabolus/Diabolus-repository-Godot4-hamster-maze.git
-- Remote обновлён, проект запушен в новый репозиторий
-- Обновлён CLAUDE.md с полным контекстом
+## Архитектура main.gd
 
-### Текущий статус
-- HTML версия (Test 3.1): завершена, запушена в новый репозиторий
-- Godot 4 версия: не начата, ожидает старта разработки
-- Следующий шаг: установить Godot 4.3+, создать проект, написать maze_generator.gd
+### State machine
+```
+splash → (Enter) → play → (поймана) → lost → (Enter) → splash
+                        → (все орехи) → won_name → (ввёл имя) → won → (Enter) → splash
+```
+
+### Ключевые переменные
+```gdscript
+_state: String          # splash | play | lost | won_name | won
+_ham: Dictionary        # {x, y, burrowed, burrows}
+_maze: Array            # [ROWS][COLS], 0=проход 1=стена
+_llama: LlamaAI         # синяя лама
+_llama2: LlamaAI        # красная лама (спавн через 60с)
+_llama_bonus: int       # +1 каждые 30с, макс 8
+_nuts: Array            # [{x,y,got,visible}]
+_next_wave_ms: int      # когда следующая волна орехов
+_rh: RHManager          # 2 пары порталов
+_scores: Array          # [{name,time_ms}], топ-10, сессионные
+_name_layer: CanvasLayer
+_name_edit: LineEdit    # для ввода имени после победы
+_frame: int             # счётчик кадров (для анимаций)
+```
+
+### Туман войны
+```gdscript
+FOG_INNER_R = 3.8  # клеток — полная видимость
+FOG_OUTER_R = 5.8  # клеток — полная темнота
+FOG_ALPHA   = 0.40 # максимальная непрозрачность
+fog_color = Color(0.05, 0.05, 0.10)  # тёмно-синий тон
+```
+
+### _ell() helper
+```gdscript
+func _ell(center, rx, ry, color, rot=0.0, seg=24)
+# → draw_colored_polygon(PackedVector2Array, Color)
+# Единственный способ рисовать эллипсы в Godot 4 draw API
+```
+
+---
+
+## Этапы (статус)
+
+| Этап | Содержание | Статус |
+|------|-----------|--------|
+| 1 | Лабиринт (рендер + генерация) | ✅ Готово |
+| 2 | Хомяк (рисование + WASD движение) | ✅ Готово |
+| 3 | Лама AI (синяя + красная) + game over | ✅ Готово |
+| 4 | Орехи + норы (Space) + порталы + экран победы | ✅ Готово |
+| 5 | Туман войны | ✅ Готово |
+| 6 | Сплэш экран + локальный рекорд + ввод имени | ⚠️ Есть баг |
+| 7 | Звук (.ogg) + Supabase leaderboard | ❌ Не начато |
+| 8 | Мобильные контролы + экспорт | ❌ Не начато |
+| 9 | Спрайты / анимации (визуальная переработка) | ❌ Запланировано после 8 |
+
+---
+
+## Known Issues / Риски
+
+### 🔴 Критический баг Etap 6 — тёмный серый экран при запуске
+**Симптом:** после обновления до Etap 6 открывается темно-серое пустое окно.
+**Вероятная причина (на расследовании):**
+- Возможен тихий crash в `_draw_splash()` после отрисовки фона (#050510),
+  из-за чего виден только серый дефолтный фон Godot (Forward Plus renderer)
+- Подозрительное место: `["1.", "2.", "3."].get(i, ...)` — метод `.get()` не существует
+  на массиве Array в GDScript (только на Dictionary). Хотя код в ветке `_scores.is_empty()`,
+  GDScript может ловить это при парсинге.
+- Другая возможность: `_setup_name_input()` падает при добавлении Control-нод в CanvasLayer
+
+**Следующий шаг — ПЕРВОЕ ЧТО НУЖНО СДЕЛАТЬ:**
+1. Открыть Godot → Output панель → найти красные ошибки
+2. Если ошибка парсинга GDScript — исправить строку `.get()`:
+   ```gdscript
+   # Было (баг):
+   var medal: String = ["1.", "2.", "3."].get(i, "%d." % (i + 1))
+   # Надо:
+   var medals_arr := ["1.", "2.", "3.", "4.", "5.", "6.", "7.", "8."]
+   var medal: String = medals_arr[i] if i < medals_arr.size() else "%d." % (i + 1)
+   ```
+3. Если ошибок нет — добавить `print("draw called")` в начало `_draw()` для диагностики
+
+### 🟡 Средние риски
+- Leaderboard сессионный (в памяти) — после перезапуска Godot рекорды сбрасываются.
+  Для постоянства нужен ConfigFile (Etap 7).
+- `_rh` (RHManager) = null в splash state. В `_draw()` есть guard `if _state == "splash": return`,
+  но если логика нарушится — NullPointerException.
+- `_nuts` пустой в splash state. HUD использует `_nuts.size()` — защищено empty array.
+
+### 🟢 Нормально работает (Etap 1-5)
+- Лабиринт генерируется корректно
+- Хомяк движется, WASD + held-key
+- Лама AI (синяя + красная), все 4 состояния
+- Орехи, волны, норы (Space), порталы
+- Туман войны с плавным градиентом
+
+---
+
+## Ключевые технические решения
+
+| Решение | Почему |
+|---------|--------|
+| Pure Node2D `_draw()` вместо TileMap | Быстрее портировать из Canvas JS, не нужен TileSet |
+| `_ell()` через `draw_colored_polygon` | В Godot 4 нет `draw_ellipse` |
+| RefCounted для AI классов | Не нужна сцена, чистый GDScript |
+| Autoload `C` для констант | Все классы (RefCounted) видят C.* без импортов |
+| CanvasLayer + LineEdit для ввода имени | Единственный способ сделать текстовый ввод поверх _draw() |
+| Fog per-cell (не шейдер) | Проще реализовать, достаточно хорошо выглядит |
+| `int / int` в GDScript = int | Использовать `float()` или `/ 1000.0` для деления |
+
+---
+
+## Оригинальная HTML игра — соответствие строк
+
+| Механика | Строки HTML |
+|----------|------------|
+| `makeMaze()` | 413-462 |
+| `bfs()` | 465-482 |
+| `rhInit/rhUpdate/pickRHPos` | 782-833 |
+| `drawNut()` | 1051-1058 |
+| `drawHamster()` | 1061-1116 |
+| `drawLlama()` | 1140-1180 |
+| `drawFog()` | 1439-1460 |
+| `updateLlama()` | 975-1031 |
+| `doBurrow()` | 539-553 |
+| Nuts init | 511-529 |
+| Nuts update | 921-948 |
+
+---
+
+## Команды запуска
+
+```bash
+# Открыть проект в Godot (если не открыт)
+open "/Users/andriidiablo/Documents/Test 3.1/project.godot"
+
+# Git
+cd "/Users/andriidiablo/Documents/Test 3.1"
+git status
+git log --oneline -8
+git push
+
+# Запустить игру — кнопка ▶ в правом верхнем углу Godot
+# Горячая клавиша: F5 (может не работать если фокус не на Godot)
+# Обновить: закрыть игровое окно → снова ▶
+```
+
+---
+
+## История сессий
+
+### Сессия 1-2 (2026-03-05)
+- Решение перейти на Godot 4
+- Создан репозиторий, начата структура проекта
+
+### Сессия 3 (2026-03-05, текущая)
+**Сделано:**
+- Etap 1: лабиринт (maze_generator.gd, bfs_pathfinder.gd)
+- Etap 2: хомяк (рисование + движение)
+- Etap 3: llama_ai.gd, синяя + красная лама, game over
+- Etap 4: nuts (волны), burrows (Space), rh_manager.gd (порталы), win screen
+- Etap 5: туман войны, FOG_ALPHA=0.40 (настроен по вкусу пользователя)
+- Etap 6: сплэш-экран, ввод имени (LineEdit), локальный leaderboard
+  → **Баг: темный экран при запуске, причина не выяснена (отключили свет)**
+
+**Commits этой сессии:**
+```
+923029d Etap 6: splash screen + local leaderboard + name input
+ae9664b Tune fog of war: lighter alpha (0.40) + dark navy tint
+b041b00 Etap 5: fog of war (туман войны)
+1ab1fde Etap 4: nuts, burrows, rabbit holes, win screen
+b7907b9 Etap 3: llama AI (blue + red) + game over screen
+```
+
+---
+
+## Next Steps (следующая сессия)
+
+### 🔴 Первым делом — исправить баг Etap 6
+1. Открыть Godot, нажать ▶
+2. Проверить Output на ошибки
+3. Если ошибка GDScript parse — исправить `.get()` на массиве (см. Known Issues)
+4. Если нет ошибок — добавить `print()` в `_draw()` для диагностики
+
+### После фикса — Etap 7
+- Звуки: `.ogg` файлы в `assets/sounds/` + AudioStreamPlayer
+- Supabase leaderboard: HTTPRequest + `https://ytipfibgtnrvtsygetnb.supabase.co`
+  - Таблица `scores` (id, uid, name, time, date, comment)
+  - Игрок = UUID в FileAccess/ConfigFile (замена localStorage)
+- Постоянное хранение рекордов: ConfigFile `user://scores.cfg`
+
+### Etap 8 (после 7)
+- Мобильные контролы: TouchScreenButton (d-pad + нора + музыка)
+- Экспорт: Web (HTML5), Android
