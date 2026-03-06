@@ -36,6 +36,15 @@ var _next_wave_ms: int = 0
 # ── Rabbit holes (portals) ────────────────────────────────────────────
 var _rh: RHManager = null
 
+# ── Audio ─────────────────────────────────────────────────────────────
+var _snd_eat:   AudioStreamPlayer = null
+var _snd_burrow: AudioStreamPlayer = null
+var _snd_tp:    AudioStreamPlayer = null
+var _snd_catch: AudioStreamPlayer = null
+var _snd_win:     AudioStreamPlayer = null
+var _snd_music:   AudioStreamPlayer = null
+var _snd_rh_laugh: AudioStreamPlayer = null
+
 # ── Supabase ──────────────────────────────────────────────────────────
 const SB_URL: String = "https://ytipfibgtnrvtsygetnb.supabase.co/rest/v1/scores"
 const SB_KEY: String = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl0aXBmaWJndG5ydnRzeWdldG5iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1NDU5OTgsImV4cCI6MjA4ODEyMTk5OH0.8lbB7UJymEZppz0RI8xnoo1EeKpSo1XMoSIC1Jy73s0"
@@ -58,6 +67,7 @@ func _ready() -> void:
 	_maze_gen = MazeGenerator.new()
 	_setup_name_input()
 	_setup_http()
+	_setup_audio()
 	_load_scores()
 	_maze = _maze_gen.make_maze()
 	queue_redraw()
@@ -99,6 +109,39 @@ func _show_name_input() -> void:
 func _hide_name_input() -> void:
 	_name_label.visible = false
 	_name_edit.visible = false
+
+
+func _setup_audio() -> void:
+	var sfx := {
+		"eat":   "res://assets/sounds/eat_nut.mp3",
+		"burrow":"res://assets/sounds/burrow.wav",
+		"tp":    "res://assets/sounds/teleport.wav",
+		"catch": "res://assets/sounds/llama_catch.wav",
+		"win":   "res://assets/sounds/win.wav",
+		"music":    "res://assets/sounds/bg_music.ogg",
+		"rh_laugh": "res://assets/sounds/rabbit_laugh.ogg",
+	}
+	for key in sfx:
+		var p := AudioStreamPlayer.new()
+		p.stream = load(sfx[key])
+		add_child(p)
+		match key:
+			"eat":    _snd_eat    = p
+			"burrow": _snd_burrow = p
+			"tp":     _snd_tp     = p
+			"catch":  _snd_catch  = p
+			"win":    _snd_win    = p
+			"music":
+				p.stream.loop = true
+				_snd_music = p
+				p.play()
+			"rh_laugh": _snd_rh_laugh = p
+
+
+func _play(p: AudioStreamPlayer) -> void:
+	if p:
+		p.stop()
+		p.play()
 
 
 func _on_name_submitted(text: String) -> void:
@@ -312,6 +355,7 @@ func _do_burrow() -> void:
 	if not _ham.burrowed and _ham.burrows > 0:
 		_ham.burrowed = true
 		_ham.burrows -= 1
+		_play(_snd_burrow)
 	elif _ham.burrowed:
 		_ham.burrowed = false
 		var dirs := [[0,1],[1,0],[0,-1],[-1,0]]
@@ -363,10 +407,22 @@ func _process(delta: float) -> void:
 			if dx != 0 or dy != 0:
 				_try_move(dx, dy)
 
+		# Check if rabbit just started digging (next_pos newly populated)
+		var pairs_before: Array = []
+		for _p in _rh.get_pairs():
+			pairs_before.append(_p.next_pos.is_empty())
+
 		var tp := _rh.update(_ham.x, _ham.y, _ham.burrowed, now_ms)
 		if tp != Vector2i(-1, -1):
 			_ham.x = tp.x
 			_ham.y = tp.y
+			_play(_snd_tp)
+
+		var pairs_after: Array = _rh.get_pairs()
+		for i in range(pairs_after.size()):
+			if pairs_before[i] and not pairs_after[i].next_pos.is_empty():
+				_play(_snd_rh_laugh)
+				break
 
 		_update_nuts(now_ms)
 
@@ -375,6 +431,7 @@ func _process(delta: float) -> void:
 			if caught:
 				_state = "lost"
 				_game_time_ms = Time.get_ticks_msec() - _game_start_ms
+				_play(_snd_catch)
 
 		if _llama2 == null and _game_time_ms >= C.LLAMA2_SPAWN_MS:
 			var s2 := _random_far_cell(_ham.x, _ham.y, 8)
@@ -386,6 +443,7 @@ func _process(delta: float) -> void:
 			if caught2:
 				_state = "lost"
 				_game_time_ms = Time.get_ticks_msec() - _game_start_ms
+				_play(_snd_catch)
 
 	queue_redraw()
 
@@ -395,6 +453,7 @@ func _update_nuts(now_ms: int) -> void:
 	for n in _nuts:
 		if not n.got and n.visible and n.x == _ham.x and n.y == _ham.y:
 			n.got = true
+			_play(_snd_eat)
 
 	var vis_left: int = 0
 	var hid_left: int = 0
@@ -409,6 +468,7 @@ func _update_nuts(now_ms: int) -> void:
 		_state = "won_name"
 		_game_time_ms = Time.get_ticks_msec() - _game_start_ms
 		_win_anim_t = 0
+		_play(_snd_win)
 		_show_name_input()
 		return
 
