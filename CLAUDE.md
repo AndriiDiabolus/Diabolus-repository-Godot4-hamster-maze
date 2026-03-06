@@ -51,7 +51,7 @@ LLAMA2_SPAWN_MS=60000, LLAMA_BONUS_INTERVAL_MS=30000, LLAMA_BONUS_MAX=8
 ### State machine
 ```
 splash → (Enter) → play → (поймана) → lost → (Enter) → splash
-                        → (все орехи) → won_name → (ввёл имя) → won → (Enter) → splash
+						→ (все орехи) → won_name → (ввёл имя) → won → (Enter) → splash
 ```
 
 ### Ключевые переменные

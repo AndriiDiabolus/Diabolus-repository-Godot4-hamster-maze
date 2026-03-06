@@ -48,8 +48,8 @@ var _name_label: Label = null
 func _ready() -> void:
 	_maze_gen = MazeGenerator.new()
 	_setup_name_input()
-	# Start maze in background (visible dimly behind splash)
 	_maze = _maze_gen.make_maze()
+	queue_redraw()
 
 
 # ── Name input setup ──────────────────────────────────────────────────
@@ -464,7 +464,8 @@ func _draw_splash() -> void:
 		for i in range(min(_scores.size(), 8)):
 			var sc: Dictionary = _scores[i]
 			var rank_c: Color = Color("#ffd700") if i == 0 else Color(0.7, 0.85, 1.0, 0.8)
-			var medal: String = ["1.", "2.", "3."].get(i, "%d." % (i + 1))
+			var medals_arr := ["1.", "2.", "3.", "4.", "5.", "6.", "7.", "8."]
+			var medal: String = medals_arr[i] if i < medals_arr.size() else "%d." % (i + 1)
 			draw_string(font, Vector2(col2_x, lb_y), medal,
 				HORIZONTAL_ALIGNMENT_LEFT, -1, 13, rank_c)
 			draw_string(font, Vector2(col2_x + 30, lb_y), sc.name,
