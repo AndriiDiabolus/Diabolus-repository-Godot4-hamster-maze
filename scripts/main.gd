@@ -75,7 +75,7 @@ var _name_label: Label = null
 
 func _ready() -> void:
 	_maze_gen = MazeGenerator.new()
-	_show_touch = DisplayServer.is_touchscreen_available()
+	_show_touch = true  # TEST: force touch controls visible
 	_setup_name_input()
 	_setup_http()
 	_setup_audio()
