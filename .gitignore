@@ -1,8 +1,8 @@
 # Godot 4 generated files
 .godot/
 *.translation
-export_presets.cfg
 export_credentials.cfg
+export/
 
 # Godot UID cache files (auto-generated, not needed in VCS)
 *.uid
