@@ -16,12 +16,12 @@ var _frame: int = 0
 # ── Mobile touch controls ─────────────────────────────────────────────
 var _show_touch: bool = false
 var _touch_dirs: Dictionary = {}   # finger_id -> "up"/"down"/"left"/"right"
-const MB_DPAD_CX:  float = 90.0
-const MB_DPAD_CY:  float = 585.0
-const MB_BTN_STEP: float = 62.0
-const MB_BTN_R:    float = 26.0
+const MB_DPAD_CX:  float = 140.0
+const MB_DPAD_CY:  float = 862.0   # center of CTRL zone (742+120)
+const MB_BTN_STEP: float = 76.0
+const MB_BTN_R:    float = 38.0
 const MB_BURROW_X: float = 820.0
-const MB_BURROW_Y: float = 585.0
+const MB_BURROW_Y: float = 862.0
 
 # ── Game state ────────────────────────────────────────────────────────
 # splash → play → (lost | won_name) → (splash | won) → splash
@@ -426,7 +426,7 @@ func _handle_screen_input(event: InputEvent) -> void:
 
 
 func _mb_action_at(pos: Vector2) -> String:
-	if pos.distance_to(Vector2(MB_BURROW_X, MB_BURROW_Y)) <= MB_BTN_R + 14:
+	if pos.distance_to(Vector2(MB_BURROW_X, MB_BURROW_Y)) <= MB_BTN_R + 20:
 		return "burrow"
 	var dpad_centers: Dictionary = {
 		"up":    Vector2(MB_DPAD_CX, MB_DPAD_CY - MB_BTN_STEP),
@@ -435,7 +435,7 @@ func _mb_action_at(pos: Vector2) -> String:
 		"right": Vector2(MB_DPAD_CX + MB_BTN_STEP, MB_DPAD_CY),
 	}
 	for dir in dpad_centers:
-		if pos.distance_to(dpad_centers[dir]) <= MB_BTN_R + 14:
+		if pos.distance_to(dpad_centers[dir]) <= MB_BTN_R + 16:
 			return dir
 	return ""
 
@@ -595,7 +595,7 @@ func _draw() -> void:
 			_draw_mobile_controls()
 		return
 
-	draw_rect(Rect2(0, 0, C.W, C.H + C.HUD), Color("#0d0d1a"))
+	draw_rect(Rect2(0, 0, C.W, C.H + C.HUD + C.CTRL_H), Color("#0d0d1a"))
 	_draw_maze()
 
 	for n in _nuts:
@@ -647,7 +647,7 @@ func _draw() -> void:
 # ── Splash screen ─────────────────────────────────────────────────────
 func _draw_splash() -> void:
 	# Background gradient (approximated)
-	draw_rect(Rect2(0, 0, C.W, C.H + C.HUD), Color("#050510"))
+	draw_rect(Rect2(0, 0, C.W, C.H + C.HUD + C.CTRL_H), Color("#050510"))
 	# Subtle center glow
 	for i in range(8):
 		var r: float = (8 - i) * 60.0
@@ -990,7 +990,7 @@ func _draw_hud() -> void:
 
 
 func _draw_lost_overlay() -> void:
-	draw_rect(Rect2(0, 0, C.W, C.H + C.HUD), Color(0, 0, 0, 0.78))
+	draw_rect(Rect2(0, 0, C.W, C.H + C.HUD + C.CTRL_H), Color(0, 0, 0, 0.78))
 	var font := ThemeDB.fallback_font
 	var cx: float = C.W * 0.5
 	var cy: float = C.H * 0.5
@@ -1009,7 +1009,7 @@ func _draw_lost_overlay() -> void:
 
 
 func _draw_win_overlay() -> void:
-	draw_rect(Rect2(0, 0, C.W, C.H + C.HUD), Color(0, 0, 0, 0.82))
+	draw_rect(Rect2(0, 0, C.W, C.H + C.HUD + C.CTRL_H), Color(0, 0, 0, 0.82))
 	var font := ThemeDB.fallback_font
 	var cx: float = C.W * 0.5
 	var cy: float = C.H * 0.5
@@ -1092,38 +1092,44 @@ func _draw_fog() -> void:
 # ── Mobile controls rendering ──────────────────────────────────────────
 func _draw_mobile_controls() -> void:
 	var font := ThemeDB.fallback_font
+	var zone_y: float = C.H + C.HUD
+
+	# Blue background for controls zone
+	draw_rect(Rect2(0, zone_y, C.W, C.CTRL_H), Color("#0a1535"))
+	draw_rect(Rect2(0, zone_y, C.W, 2), Color("#1a3060"))  # top border line
+
 	if _state != "play":
-		# Tap-anywhere hint on non-play screens
-		draw_string(font, Vector2(C.W * 0.5 - 50, C.H + C.HUD - 18),
-			"Tap — продолжить", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1, 1, 1, 0.28))
+		draw_string(font, Vector2(C.W * 0.5 - 60, zone_y + C.CTRL_H * 0.5 + 8),
+			"Tap — продолжить", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, 0.35))
 		return
 
 	var active: Array = _touch_dirs.values()
 
 	# D-pad: 4 direction buttons
 	var dpad_pos: Dictionary = {
-		"up":    Vector2(MB_DPAD_CX,              MB_DPAD_CY - MB_BTN_STEP),
-		"down":  Vector2(MB_DPAD_CX,              MB_DPAD_CY + MB_BTN_STEP),
+		"up":    Vector2(MB_DPAD_CX,               MB_DPAD_CY - MB_BTN_STEP),
+		"down":  Vector2(MB_DPAD_CX,               MB_DPAD_CY + MB_BTN_STEP),
 		"left":  Vector2(MB_DPAD_CX - MB_BTN_STEP, MB_DPAD_CY),
 		"right": Vector2(MB_DPAD_CX + MB_BTN_STEP, MB_DPAD_CY),
 	}
 	# Center disc
-	_ell(Vector2(MB_DPAD_CX, MB_DPAD_CY), 18, 18, Color(0, 0, 0, 0.18))
+	_ell(Vector2(MB_DPAD_CX, MB_DPAD_CY), 26, 26, Color(0, 0, 0, 0.25))
 
 	for dir in dpad_pos:
 		var center: Vector2 = dpad_pos[dir]
 		var is_pressed: bool = active.has(dir)
-		var bg_a: float = 0.50 if is_pressed else 0.22
-		_ell(center, MB_BTN_R, MB_BTN_R, Color(0.15, 0.20, 0.45, bg_a))
-		draw_colored_polygon(_mb_arrow(center, dir), Color(1, 1, 1, 0.65 if is_pressed else 0.35))
+		var bg_a: float = 0.60 if is_pressed else 0.28
+		_ell(center, MB_BTN_R, MB_BTN_R, Color(0.15, 0.22, 0.50, bg_a))
+		draw_colored_polygon(_mb_arrow(center, dir), Color(1, 1, 1, 0.75 if is_pressed else 0.45))
 
 	# Burrow button
-	var bur_pressed: bool = false  # burrow is a tap, no hold state
-	_ell(Vector2(MB_BURROW_X, MB_BURROW_Y), MB_BTN_R + 6, MB_BTN_R + 6, Color(0, 0.25, 0, 0.35))
-	draw_string(font, Vector2(MB_BURROW_X - 9, MB_BURROW_Y + 5),
-		"нора", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.35, 1.0, 0.35, 0.45))
-	draw_string(font, Vector2(MB_BURROW_X - 6, MB_BURROW_Y - 10),
-		"[ ]", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, 0.30))
+	var bur_r: float = MB_BTN_R + 10
+	_ell(Vector2(MB_BURROW_X, MB_BURROW_Y), bur_r, bur_r, Color(0.05, 0.28, 0.08, 0.45))
+	_ell(Vector2(MB_BURROW_X, MB_BURROW_Y), bur_r - 4, bur_r - 4, Color(0.05, 0.18, 0.06, 0.30))
+	draw_string(font, Vector2(MB_BURROW_X - 18, MB_BURROW_Y + 7),
+		"НОРА", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0.4, 1.0, 0.4, 0.65))
+	draw_string(font, Vector2(MB_BURROW_X - 13, MB_BURROW_Y - 14),
+		"[SP]", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, 0.28))
 
 
 func _mb_arrow(center: Vector2, dir: String) -> PackedVector2Array:

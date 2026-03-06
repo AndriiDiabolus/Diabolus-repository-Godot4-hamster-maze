@@ -4,7 +4,8 @@ extends Node
 const COLS: int = 25
 const ROWS: int = 19
 const CELL: int = 36
-const HUD: int  = 58
+const HUD: int   = 58
+const CTRL_H: int = 240  # mobile controls zone below HUD
 
 const W: int = COLS * CELL  # 900
 const H: int = ROWS * CELL  # 684
