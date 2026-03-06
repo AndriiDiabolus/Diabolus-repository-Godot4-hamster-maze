@@ -15,10 +15,10 @@ const ALERT_R: int = 8   # llama hears hamster within 8 cells
 
 # Llama base speed (frames per step)
 const LSPEED_BASE: Dictionary = {
-	"patrol": 32,
-	"alert":  22,
-	"chase":  16,
-	"search": 20,
+	"patrol": 52,
+	"alert":  36,
+	"chase":  28,
+	"search": 34,
 }
 
 # Rabbit holes

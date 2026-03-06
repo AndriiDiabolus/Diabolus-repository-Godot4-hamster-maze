@@ -36,7 +36,16 @@ var _next_wave_ms: int = 0
 # ── Rabbit holes (portals) ────────────────────────────────────────────
 var _rh: RHManager = null
 
-# ── Leaderboard (local, session) ─────────────────────────────────────
+# ── Supabase ──────────────────────────────────────────────────────────
+const SB_URL: String = "https://ytipfibgtnrvtsygetnb.supabase.co/rest/v1/scores"
+const SB_KEY: String = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl0aXBmaWJndG5ydnRzeWdldG5iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1NDU5OTgsImV4cCI6MjA4ODEyMTk5OH0.8lbB7UJymEZppz0RI8xnoo1EeKpSo1XMoSIC1Jy73s0"
+var _http_post: HTTPRequest = null
+var _http_get: HTTPRequest = null
+var _online_scores: Array = []
+var _fetching: bool = false
+var _player_uid: String = ""
+
+# ── Leaderboard (local, persistent) ──────────────────────────────────
 var _scores: Array = []   # [{name:String, time_ms:int}], sorted asc
 
 # ── Name input UI ─────────────────────────────────────────────────────
@@ -48,6 +57,8 @@ var _name_label: Label = null
 func _ready() -> void:
 	_maze_gen = MazeGenerator.new()
 	_setup_name_input()
+	_setup_http()
+	_load_scores()
 	_maze = _maze_gen.make_maze()
 	queue_redraw()
 
@@ -98,8 +109,103 @@ func _on_name_submitted(text: String) -> void:
 	_scores.sort_custom(func(a, b): return a.time_ms < b.time_ms)
 	if _scores.size() > 10:
 		_scores.resize(10)
+	_save_scores()
+	_post_score(nm, _game_time_ms)
 	_hide_name_input()
 	_state = "won"
+	queue_redraw()
+
+
+func _load_scores() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load("user://scores.cfg") != OK:
+		return
+	var count: int = cfg.get_value("scores", "count", 0)
+	for i in range(count):
+		var nm: String = cfg.get_value("scores", "name_%d" % i, "")
+		var ms: int    = cfg.get_value("scores", "time_%d" % i, 0)
+		if nm != "":
+			_scores.append({"name": nm, "time_ms": ms})
+
+
+func _save_scores() -> void:
+	var cfg := ConfigFile.new()
+	cfg.load("user://scores.cfg")  # preserve player/uid section
+	cfg.set_value("scores", "count", _scores.size())
+	for i in range(_scores.size()):
+		cfg.set_value("scores", "name_%d" % i, _scores[i].name)
+		cfg.set_value("scores", "time_%d" % i, _scores[i].time_ms)
+	cfg.save("user://scores.cfg")
+
+
+# ── Supabase HTTP ─────────────────────────────────────────────────────
+func _setup_http() -> void:
+	_http_post = HTTPRequest.new()
+	add_child(_http_post)
+	_http_post.request_completed.connect(_on_post_completed)
+	_http_get = HTTPRequest.new()
+	add_child(_http_get)
+	_http_get.request_completed.connect(_on_get_completed)
+	_load_uid()
+	_fetch_online_scores()
+
+
+func _load_uid() -> void:
+	var cfg := ConfigFile.new()
+	cfg.load("user://scores.cfg")
+	_player_uid = cfg.get_value("player", "uid", "")
+	if _player_uid.is_empty():
+		_player_uid = "%x%x%x%x" % [randi(), randi(), randi(), randi()]
+		cfg.set_value("player", "uid", _player_uid)
+		cfg.save("user://scores.cfg")
+
+
+func _post_score(nm: String, time_ms: int) -> void:
+	var headers := PackedStringArray([
+		"apikey: " + SB_KEY,
+		"Authorization: Bearer " + SB_KEY,
+		"Content-Type: application/json",
+		"Prefer: return=minimal"
+	])
+	var body := JSON.stringify({
+		"uid": _player_uid,
+		"name": nm,
+		"time": time_ms,
+		"date": Time.get_date_string_from_system()
+	})
+	_http_post.request(SB_URL, headers, HTTPClient.METHOD_POST, body)
+
+
+func _fetch_online_scores() -> void:
+	if _fetching:
+		return
+	_fetching = true
+	var headers := PackedStringArray([
+		"apikey: " + SB_KEY,
+		"Authorization: Bearer " + SB_KEY
+	])
+	_http_get.request(SB_URL + "?select=name,time&order=time.asc&limit=10", headers)
+
+
+func _on_post_completed(_result: int, response_code: int, _hdrs: PackedStringArray, _body: PackedByteArray) -> void:
+	if response_code == 201:
+		_fetch_online_scores()
+
+
+func _on_get_completed(_result: int, response_code: int, _hdrs: PackedStringArray, body: PackedByteArray) -> void:
+	_fetching = false
+	if response_code != 200:
+		return
+	var json := JSON.new()
+	if json.parse(body.get_string_from_utf8()) != OK:
+		return
+	var data = json.get_data()
+	if not data is Array:
+		return
+	_online_scores = []
+	for item in data:
+		if item is Dictionary and item.has("name") and item.has("time"):
+			_online_scores.append({"name": str(item["name"]), "time_ms": int(item["time"])})
 	queue_redraw()
 
 
@@ -177,6 +283,7 @@ func _input(event: InputEvent) -> void:
 				_start_game()
 			"lost", "won":
 				_state = "splash"
+				_fetch_online_scores()
 				queue_redraw()
 		return
 
@@ -451,20 +558,24 @@ func _draw_splash() -> void:
 
 	# Column 2 — Leaderboard
 	var lb_y: float = title_y + 70.0
-	draw_string(font, Vector2(col2_x, lb_y), "Рекорды сессии",
+	var show_online: bool = not _online_scores.is_empty()
+	var lb_title: String = "Онлайн рекорды" if show_online else "Рекорды"
+	draw_string(font, Vector2(col2_x, lb_y), lb_title,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("#ffd700"))
 	lb_y += 6
 	draw_rect(Rect2(col2_x, lb_y, C.W * 0.5 - 50.0, 1), Color("#1a3060"))
 	lb_y += 14
 
-	if _scores.is_empty():
-		draw_string(font, Vector2(col2_x, lb_y + 10), "Пока нет рекордов",
+	var scores_to_show: Array = _online_scores if show_online else _scores
+	if scores_to_show.is_empty():
+		var hint: String = "Загрузка..." if _fetching else "Пока нет рекордов"
+		draw_string(font, Vector2(col2_x, lb_y + 10), hint,
 			HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, 0.3))
 	else:
-		for i in range(min(_scores.size(), 8)):
-			var sc: Dictionary = _scores[i]
+		var medals_arr := ["1.", "2.", "3.", "4.", "5.", "6.", "7.", "8."]
+		for i in range(min(scores_to_show.size(), 8)):
+			var sc: Dictionary = scores_to_show[i]
 			var rank_c: Color = Color("#ffd700") if i == 0 else Color(0.7, 0.85, 1.0, 0.8)
-			var medals_arr := ["1.", "2.", "3.", "4.", "5.", "6.", "7.", "8."]
 			var medal: String = medals_arr[i] if i < medals_arr.size() else "%d." % (i + 1)
 			draw_string(font, Vector2(col2_x, lb_y), medal,
 				HORIZONTAL_ALIGNMENT_LEFT, -1, 13, rank_c)
@@ -483,7 +594,7 @@ func _draw_splash() -> void:
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color("#ffd700"))
 
 	# Version hint
-	draw_string(font, Vector2(cx - 60, C.H + C.HUD - 12), "Godot 4  •  Etap 6",
+	draw_string(font, Vector2(cx - 60, C.H + C.HUD - 12), "Godot 4  •  Etap 7",
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(1, 1, 1, 0.2))
 
 
