@@ -13,6 +13,16 @@ const MOVE_INTERVAL: float = 8.0 / 60.0
 var _move_timer: float = 0.0
 var _frame: int = 0
 
+# ── Mobile touch controls ─────────────────────────────────────────────
+var _show_touch: bool = false
+var _touch_dirs: Dictionary = {}   # finger_id -> "up"/"down"/"left"/"right"
+const MB_DPAD_CX:  float = 90.0
+const MB_DPAD_CY:  float = 585.0
+const MB_BTN_STEP: float = 62.0
+const MB_BTN_R:    float = 26.0
+const MB_BURROW_X: float = 820.0
+const MB_BURROW_Y: float = 585.0
+
 # ── Game state ────────────────────────────────────────────────────────
 # splash → play → (lost | won_name) → (splash | won) → splash
 var _state: String = "splash"
@@ -65,6 +75,7 @@ var _name_label: Label = null
 
 func _ready() -> void:
 	_maze_gen = MazeGenerator.new()
+	_show_touch = DisplayServer.is_touchscreen_available()
 	_setup_name_input()
 	_setup_http()
 	_setup_audio()
@@ -313,6 +324,10 @@ func _init_nuts(llama_start: Vector2i) -> void:
 
 # ── Input ─────────────────────────────────────────────────────────────
 func _input(event: InputEvent) -> void:
+	if event is InputEventScreenTouch or event is InputEventScreenDrag:
+		_handle_screen_input(event)
+		return
+
 	if not event is InputEventKey or not event.pressed or event.echo:
 		return
 
@@ -373,6 +388,58 @@ func _do_burrow() -> void:
 					lm.y += chosen[1]
 
 
+# ── Touch input ───────────────────────────────────────────────────────
+func _handle_screen_input(event: InputEvent) -> void:
+	var pos: Vector2
+	var finger: int
+	var pressed: bool
+	if event is InputEventScreenTouch:
+		pos = event.position; finger = event.index; pressed = event.pressed
+	else:
+		pos = event.position; finger = event.index; pressed = true
+
+	# State transitions: any tap on non-play screens
+	if event is InputEventScreenTouch and pressed:
+		match _state:
+			"splash":
+				_start_game()
+				return
+			"lost", "won":
+				_state = "splash"
+				_fetch_online_scores()
+				queue_redraw()
+				return
+
+	if _state != "play":
+		return
+
+	if not pressed:
+		_touch_dirs.erase(finger)
+		return
+
+	var action := _mb_action_at(pos)
+	if action == "burrow":
+		if event is InputEventScreenTouch:
+			_do_burrow()
+	elif action != "":
+		_touch_dirs[finger] = action
+
+
+func _mb_action_at(pos: Vector2) -> String:
+	if pos.distance_to(Vector2(MB_BURROW_X, MB_BURROW_Y)) <= MB_BTN_R + 14:
+		return "burrow"
+	var dpad_centers: Dictionary = {
+		"up":    Vector2(MB_DPAD_CX, MB_DPAD_CY - MB_BTN_STEP),
+		"down":  Vector2(MB_DPAD_CX, MB_DPAD_CY + MB_BTN_STEP),
+		"left":  Vector2(MB_DPAD_CX - MB_BTN_STEP, MB_DPAD_CY),
+		"right": Vector2(MB_DPAD_CX + MB_BTN_STEP, MB_DPAD_CY),
+	}
+	for dir in dpad_centers:
+		if pos.distance_to(dpad_centers[dir]) <= MB_BTN_R + 14:
+			return dir
+	return ""
+
+
 # ── Process ───────────────────────────────────────────────────────────
 func _process(delta: float) -> void:
 	_frame += 1
@@ -404,6 +471,15 @@ func _process(delta: float) -> void:
 				dx = -1
 			elif Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
 				dx =  1
+			elif not _touch_dirs.is_empty():
+				for td in _touch_dirs.values():
+					match td:
+						"up":    dy = -1
+						"down":  dy =  1
+						"left":  dx = -1
+						"right": dx =  1
+					if dx != 0 or dy != 0:
+						break
 			if dx != 0 or dy != 0:
 				_try_move(dx, dy)
 
@@ -515,6 +591,8 @@ func _random_far_cell(from_x: int, from_y: int, min_dist: int) -> Vector2i:
 func _draw() -> void:
 	if _state == "splash":
 		_draw_splash()
+		if _show_touch:
+			_draw_mobile_controls()
 		return
 
 	draw_rect(Rect2(0, 0, C.W, C.H + C.HUD), Color("#0d0d1a"))
@@ -561,6 +639,9 @@ func _draw() -> void:
 		_draw_lost_overlay()
 	elif _state == "won" or _state == "won_name":
 		_draw_win_overlay()
+
+	if _show_touch:
+		_draw_mobile_controls()
 
 
 # ── Splash screen ─────────────────────────────────────────────────────
@@ -654,7 +735,7 @@ func _draw_splash() -> void:
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color("#ffd700"))
 
 	# Version hint
-	draw_string(font, Vector2(cx - 60, C.H + C.HUD - 12), "Godot 4  •  Etap 7",
+	draw_string(font, Vector2(cx - 60, C.H + C.HUD - 12), "Godot 4  •  Etap 8",
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(1, 1, 1, 0.2))
 
 
@@ -902,9 +983,10 @@ func _draw_hud() -> void:
 		draw_string(font, Vector2(C.W * 0.5 - 30, Y + 40), "Лама %s" % fire,
 			HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("#ffcc44"))
 
+	var hint: String = "WASD/←↑→↓ — движение   Пробел — нора   Enter — рестарт" if not _show_touch \
+		else "D-pad — движение   [нора] — закопаться"
 	draw_string(font, Vector2(8, Y + C.HUD - 8),
-		"WASD/←↑→↓ — движение   Пробел — нора   Enter — рестарт",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("#3a3a5a"))
+		hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("#3a3a5a"))
 
 
 func _draw_lost_overlay() -> void:
@@ -1005,6 +1087,66 @@ func _draw_fog() -> void:
 			if alpha > 0.01:
 				draw_rect(Rect2(col * C.CELL, r * C.CELL, C.CELL, C.CELL),
 					Color(fog_color.r, fog_color.g, fog_color.b, alpha))
+
+
+# ── Mobile controls rendering ──────────────────────────────────────────
+func _draw_mobile_controls() -> void:
+	var font := ThemeDB.fallback_font
+	if _state != "play":
+		# Tap-anywhere hint on non-play screens
+		draw_string(font, Vector2(C.W * 0.5 - 50, C.H + C.HUD - 18),
+			"Tap — продолжить", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1, 1, 1, 0.28))
+		return
+
+	var active: Array = _touch_dirs.values()
+
+	# D-pad: 4 direction buttons
+	var dpad_pos: Dictionary = {
+		"up":    Vector2(MB_DPAD_CX,              MB_DPAD_CY - MB_BTN_STEP),
+		"down":  Vector2(MB_DPAD_CX,              MB_DPAD_CY + MB_BTN_STEP),
+		"left":  Vector2(MB_DPAD_CX - MB_BTN_STEP, MB_DPAD_CY),
+		"right": Vector2(MB_DPAD_CX + MB_BTN_STEP, MB_DPAD_CY),
+	}
+	# Center disc
+	_ell(Vector2(MB_DPAD_CX, MB_DPAD_CY), 18, 18, Color(0, 0, 0, 0.18))
+
+	for dir in dpad_pos:
+		var center: Vector2 = dpad_pos[dir]
+		var is_pressed: bool = active.has(dir)
+		var bg_a: float = 0.50 if is_pressed else 0.22
+		_ell(center, MB_BTN_R, MB_BTN_R, Color(0.15, 0.20, 0.45, bg_a))
+		draw_colored_polygon(_mb_arrow(center, dir), Color(1, 1, 1, 0.65 if is_pressed else 0.35))
+
+	# Burrow button
+	var bur_pressed: bool = false  # burrow is a tap, no hold state
+	_ell(Vector2(MB_BURROW_X, MB_BURROW_Y), MB_BTN_R + 6, MB_BTN_R + 6, Color(0, 0.25, 0, 0.35))
+	draw_string(font, Vector2(MB_BURROW_X - 9, MB_BURROW_Y + 5),
+		"нора", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.35, 1.0, 0.35, 0.45))
+	draw_string(font, Vector2(MB_BURROW_X - 6, MB_BURROW_Y - 10),
+		"[ ]", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, 0.30))
+
+
+func _mb_arrow(center: Vector2, dir: String) -> PackedVector2Array:
+	var s: float = MB_BTN_R * 0.52
+	var pts := PackedVector2Array()
+	match dir:
+		"up":
+			pts.append(Vector2(center.x,       center.y - s))
+			pts.append(Vector2(center.x + s,   center.y + s * 0.55))
+			pts.append(Vector2(center.x - s,   center.y + s * 0.55))
+		"down":
+			pts.append(Vector2(center.x,       center.y + s))
+			pts.append(Vector2(center.x - s,   center.y - s * 0.55))
+			pts.append(Vector2(center.x + s,   center.y - s * 0.55))
+		"left":
+			pts.append(Vector2(center.x - s,   center.y))
+			pts.append(Vector2(center.x + s * 0.55, center.y - s))
+			pts.append(Vector2(center.x + s * 0.55, center.y + s))
+		"right":
+			pts.append(Vector2(center.x + s,   center.y))
+			pts.append(Vector2(center.x - s * 0.55, center.y - s))
+			pts.append(Vector2(center.x - s * 0.55, center.y + s))
+	return pts
 
 
 # ── Helpers ───────────────────────────────────────────────────────────
