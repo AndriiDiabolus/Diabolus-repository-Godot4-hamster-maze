@@ -550,7 +550,7 @@ func _activate_menu_selection() -> void:
 func _process(delta: float) -> void:
 	_frame += 1
 
-	if _state == "splash" or _state == "won_name":
+	if _state in ["menu", "credits", "splash", "won_name"]:
 		queue_redraw()
 		return
 
