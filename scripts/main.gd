@@ -10,6 +10,7 @@ const FOG_ALPHA:   float = 0.40  # max fog darkness
 
 # ── Movement timer ────────────────────────────────────────────────────
 const MOVE_INTERVAL: float = 8.0 / 60.0
+const WIN_SPIN_DUR: int = 185  # кадров (~3 сек) — анимация вращающегося хомяка
 var _move_timer: float = 0.0
 var _frame: int = 0
 
@@ -558,7 +559,14 @@ func _activate_menu_selection() -> void:
 func _process(delta: float) -> void:
 	_frame += 1
 
-	if _state in ["menu", "credits", "splash", "won_name"]:
+	if _state in ["menu", "credits", "splash"]:
+		queue_redraw()
+		return
+
+	if _state == "won_name":
+		_win_anim_t += 1
+		if _win_anim_t == WIN_SPIN_DUR:
+			_show_name_input()
 		queue_redraw()
 		return
 
@@ -659,7 +667,7 @@ func _update_nuts(now_ms: int) -> void:
 		_game_time_ms = Time.get_ticks_msec() - _game_start_ms
 		_win_anim_t = 0
 		_play(_snd_win)
-		_show_name_input()
+		# _show_name_input() вызывается после WIN_SPIN_DUR кадров анимации
 		return
 
 	if vis_left == 0 and hid_left > 0:
@@ -1268,6 +1276,36 @@ func _draw_lost_overlay() -> void:
 	draw_string(font, Vector2(cx - 130, cy + 98), "Enter — в главное меню", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(1,1,1,0.45))
 
 
+func _draw_win_anim() -> void:
+	var p: float = min(float(_win_anim_t) / WIN_SPIN_DUR, 1.0)
+
+	# Затемнение нарастает
+	draw_rect(Rect2(0, 0, C.W, C.H + C.HUD), Color(0, 0, 0, p * 0.82))
+
+	# Хомяк растёт первые 70%, потом держит максимум
+	var max_r: float = min(C.W, C.H) * 0.44
+	var r: float = max_r * (p / 0.7 if p < 0.7 else 1.0)
+	var rot: float = p * PI * 8.0  # ~4 полных оборота
+	var cx: float = C.W * 0.5
+	var cy: float = C.H * 0.5 - 20.0
+
+	# Рисуем хомяка с трансформацией (вращение + масштаб)
+	var sc: float = r / 30.0
+	draw_set_transform(Vector2(cx, cy), rot, Vector2(sc, sc))
+	_draw_hamster(0.0, 0.0, false)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+	# "ПОБЕДА!" появляется во второй половине анимации
+	if p > 0.5:
+		var tp: float = (p - 0.5) / 0.5
+		var font := ThemeDB.fallback_font
+		var fs: int = int(36 + 18 * tp)
+		var text: String = "ПОБЕДА!"
+		var tw: float = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		draw_string(font, Vector2(cx - tw * 0.5, cy - r - 20.0), text,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1.0, 0.84, 0.0, tp))
+
+
 func _draw_win_overlay() -> void:
 	draw_rect(Rect2(0, 0, C.W, C.H + C.HUD + C.CTRL_H), Color(0, 0, 0, 0.82))
 	var font := ThemeDB.fallback_font
@@ -1275,6 +1313,9 @@ func _draw_win_overlay() -> void:
 	var cy: float = C.H * 0.5
 
 	if _state == "won_name":
+		if _win_anim_t < WIN_SPIN_DUR:
+			_draw_win_anim()
+			return
 		# Waiting for player to type name
 		draw_rect(Rect2(cx - 240, cy - 120, 480, 220), Color("#0d2a0d"))
 		draw_rect(Rect2(cx - 240, cy - 120, 480, 220), Color("#ffd700"), false, 2.0)
