@@ -16,6 +16,7 @@ var _frame: int = 0
 # ── Mobile touch controls ─────────────────────────────────────────────
 var _show_touch: bool = false
 var _touch_dirs: Dictionary = {}   # finger_id -> "up"/"down"/"left"/"right"
+var _held_keys: Dictionary = {}    # keycode -> bool, web-compatible held key state
 const MB_DPAD_CX:  float = 140.0
 const MB_DPAD_CY:  float = 980.0   # bottom of CTRL zone, title takes top portion
 const MB_BTN_STEP: float = 76.0
@@ -373,6 +374,11 @@ func _input(event: InputEvent) -> void:
 		_handle_menu_click(event.position)
 		return
 
+	# Track held key state for web-compatible movement (Input.is_key_pressed won't see JS events)
+	if event is InputEventKey and not event.echo:
+		var _hk: int = event.physical_keycode if event.physical_keycode != KEY_NONE else event.keycode
+		_held_keys[_hk] = event.pressed
+
 	if not event is InputEventKey or not event.pressed or event.echo:
 		return
 
@@ -569,13 +575,13 @@ func _process(delta: float) -> void:
 			_move_timer = 0.0
 			var dx: int = 0
 			var dy: int = 0
-			if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
+			if _held_keys.get(KEY_W, false) or _held_keys.get(KEY_UP, false):
 				dy = -1
-			elif Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
+			elif _held_keys.get(KEY_S, false) or _held_keys.get(KEY_DOWN, false):
 				dy =  1
-			elif Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
+			elif _held_keys.get(KEY_A, false) or _held_keys.get(KEY_LEFT, false):
 				dx = -1
-			elif Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
+			elif _held_keys.get(KEY_D, false) or _held_keys.get(KEY_RIGHT, false):
 				dx =  1
 			elif not _touch_dirs.is_empty():
 				for td in _touch_dirs.values():
@@ -697,20 +703,14 @@ func _random_far_cell(from_x: int, from_y: int, min_dist: int) -> Vector2i:
 func _draw() -> void:
 	if _state == "menu":
 		_draw_menu()
-		if _show_touch:
-			_draw_mobile_controls()
 		return
 
 	if _state == "credits":
 		_draw_credits()
-		if _show_touch:
-			_draw_mobile_controls()
 		return
 
 	if _state == "splash":
 		_draw_splash()
-		if _show_touch:
-			_draw_mobile_controls()
 		return
 
 	draw_rect(Rect2(0, 0, C.W, C.H + C.HUD + C.CTRL_H), Color("#0d0d1a"))
@@ -758,8 +758,6 @@ func _draw() -> void:
 	elif _state == "won" or _state == "won_name":
 		_draw_win_overlay()
 
-	if _show_touch:
-		_draw_mobile_controls()
 
 
 # ── Main menu ─────────────────────────────────────────────────────────
