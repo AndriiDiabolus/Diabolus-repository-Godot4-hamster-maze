@@ -1102,8 +1102,8 @@ func _draw_mobile_controls() -> void:
 	_draw_ctrl_title()
 
 	if _state != "play":
-		# y=952 sits in the gap between HAMSTER (bottom≈912) and MAZE (top≈964)
-		draw_string(font, Vector2(C.W * 0.5 - 62, zone_y + 210.0),
+		# sits in gap between HAMSTER (bottom≈951) and MAZE (top≈965)
+		draw_string(font, Vector2(C.W * 0.5 - 62, zone_y + 255.0),
 			"Tap — продолжить", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, 0.40))
 		return
 
@@ -1140,9 +1140,9 @@ func _draw_ctrl_title() -> void:
 	var zone_y: float = C.H + C.HUD
 	# Per-char vertical offsets for rocky/stone uneven look
 	var y_offs: Array = [0.0, -6.0, 4.0, -7.0, 5.0, -3.0, 6.0, -5.0, 3.0, -6.0, 4.0, -4.0]
-	# Both words stretched to fill full 900px width, spanning entire zone height
-	_draw_rocky_word("HAMSTER", 0.0, float(C.W), zone_y + 150.0, 130, y_offs)
-	_draw_rocky_word("MAZE",    0.0, float(C.W), zone_y + 335.0, 155, y_offs)
+	# Both words fully inside controls zone, stretched across full 900px width
+	_draw_rocky_word("HAMSTER", 0.0, float(C.W), zone_y + 180.0, 110, y_offs)
+	_draw_rocky_word("MAZE",    0.0, float(C.W), zone_y + 325.0, 130, y_offs)
 
 
 func _draw_rocky_word(text: String, zone_x: float, zone_w: float, baseline_y: float, sz: int, y_offs: Array) -> void:
