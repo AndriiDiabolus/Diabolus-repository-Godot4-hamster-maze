@@ -1138,9 +1138,11 @@ func _draw_mobile_controls() -> void:
 	_draw_ctrl_title()
 
 	if _state != "play":
-		# sits in gap between HAMSTER (bottom≈951) and MAZE (top≈965)
-		draw_string(font, Vector2(C.W * 0.5 - 62, zone_y + 255.0),
-			"Tap — продолжить", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, 0.40))
+		# "Tap" at bottom of zone with dark pill for readability
+		var tap_y := zone_y + float(C.CTRL_H) - 22.0
+		draw_rect(Rect2(C.W * 0.5 - 82.0, tap_y - 19.0, 164.0, 24.0), Color(0, 0, 0, 0.55))
+		draw_string(font, Vector2(C.W * 0.5 - 62.0, tap_y),
+			"Tap — продолжить", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, 0.55))
 		return
 
 	var active: Array = _touch_dirs.values()
@@ -1174,41 +1176,55 @@ func _draw_mobile_controls() -> void:
 
 func _draw_ctrl_title() -> void:
 	var zone_y: float = C.H + C.HUD
-	# Per-char vertical offsets for rocky/stone uneven look
-	var y_offs: Array = [0.0, -6.0, 4.0, -7.0, 5.0, -3.0, 6.0, -5.0, 3.0, -6.0, 4.0, -4.0]
-	# Both words fully inside controls zone, stretched across full 900px width
-	_draw_rocky_word("HAMSTER", 0.0, float(C.W), zone_y + 180.0, 110, y_offs)
-	_draw_rocky_word("MAZE",    0.0, float(C.W), zone_y + 325.0, 130, y_offs)
+	# Bigger irregular offsets — Flintstones stone wobble
+	var y_offs: Array = [0.0, -13.0, 9.0, -15.0, 11.0, -6.0, 14.0, -10.0, 7.0, -12.0, 8.0, -9.0]
+	var x_offs: Array = [3.0,  -5.0, 6.0,  -3.0,  5.0, -6.0,  2.0,  -4.0, 6.0,  -2.0, 4.0, -5.0]
+	# 75% of 360px zone = ~270px text, ~45px margins top & bottom
+	# sz=130 ascent≈104px → HAMSTER baseline zone_y+155, MAZE sz=145 baseline zone_y+310
+	_draw_rocky_word("HAMSTER", 0.0, float(C.W), zone_y + 155.0, 130, y_offs, x_offs)
+	_draw_rocky_word("MAZE",    0.0, float(C.W), zone_y + 310.0, 145, y_offs, x_offs)
 
 
-func _draw_rocky_word(text: String, zone_x: float, zone_w: float, baseline_y: float, sz: int, y_offs: Array) -> void:
+func _draw_rocky_word(text: String, zone_x: float, zone_w: float, baseline_y: float, sz: int, y_offs: Array, x_offs: Array) -> void:
 	var font    := ThemeDB.fallback_font
-	var fill    := Color(1.0,  0.88, 0.10, 1.0)
-	var outline := Color(0.80, 0.20, 0.02, 1.0)
-	var shadow  := Color(0.0,  0.0,  0.0,  0.55)
+	var fill    := Color(1.00, 0.88, 0.10, 1.0)   # warm yellow
+	var outline := Color(0.82, 0.20, 0.02, 1.0)   # red-orange
+	var shadow  := Color(0.00, 0.00, 0.00, 0.65)  # dark drop shadow
+	var glow    := Color(1.00, 0.50, 0.05, 0.45)  # orange inner glow
 
 	var n      := text.length()
-	var slot_w := zone_w / float(n)   # evenly distribute each char across full width
+	var slot_w := zone_w / float(n)
 
 	for i in range(n):
 		var ch   := text[i]
 		var dy   := y_offs[i % y_offs.size()] as float
+		var dx   := x_offs[i % x_offs.size()] as float
 		var ch_w := font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, sz).x
-		# Centre glyph in its equal-width slot
-		var x    := zone_x + float(i) * slot_w + (slot_w - ch_w) * 0.5
+		var x    := zone_x + float(i) * slot_w + (slot_w - ch_w) * 0.5 + dx
 		var pos  := Vector2(x, baseline_y + dy)
 
-		# Drop shadow
-		draw_string(font, pos + Vector2(4, 6), ch, HORIZONTAL_ALIGNMENT_LEFT, -1, sz, shadow)
+		# Layer 1 — deep drop shadow (offset down-right)
+		for ox in [-5, 0, 5]:
+			for oy in [-5, 0, 5]:
+				if ox != 0 or oy != 0:
+					draw_string(font, pos + Vector2(ox, oy + 4), ch,
+						HORIZONTAL_ALIGNMENT_LEFT, -1, sz, shadow)
 
-		# Red-orange outline: 8 directions × 3px
-		for ox in [-3, 0, 3]:
-			for oy in [-3, 0, 3]:
+		# Layer 2 — thick red-orange stone outline (4px radius, 8 dir)
+		for ox in [-4, -2, 0, 2, 4]:
+			for oy in [-4, -2, 0, 2, 4]:
 				if ox != 0 or oy != 0:
 					draw_string(font, pos + Vector2(ox, oy), ch,
 						HORIZONTAL_ALIGNMENT_LEFT, -1, sz, outline)
 
-		# Yellow fill on top
+		# Layer 3 — orange inner glow (tighter, 2px)
+		for ox in [-2, 0, 2]:
+			for oy in [-2, 0, 2]:
+				if ox != 0 or oy != 0:
+					draw_string(font, pos + Vector2(ox, oy), ch,
+						HORIZONTAL_ALIGNMENT_LEFT, -1, sz, glow)
+
+		# Layer 4 — yellow fill on top
 		draw_string(font, pos, ch, HORIZONTAL_ALIGNMENT_LEFT, -1, sz, fill)
 
 
