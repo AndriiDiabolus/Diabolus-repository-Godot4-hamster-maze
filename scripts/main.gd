@@ -138,7 +138,7 @@ func _setup_audio() -> void:
 		"burrow":"res://assets/sounds/burrow.wav",
 		"tp":    "res://assets/sounds/teleport.wav",
 		"catch": "res://assets/sounds/llama_catch.wav",
-		"win":   "res://assets/sounds/win.wav",
+		"win":   "res://assets/sounds/win_new.ogg",
 		"music":    "res://assets/sounds/bg_music.ogg",
 		"rh_laugh": "res://assets/sounds/rabbit_laugh.ogg",
 	}
