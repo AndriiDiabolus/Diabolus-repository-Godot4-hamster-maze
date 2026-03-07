@@ -863,61 +863,44 @@ func _draw_credits() -> void:
 	var cx: float = C.W * 0.5
 	draw_rect(Rect2(0, 0, C.W, C.H + C.HUD + C.CTRL_H), Color("#050510"))
 
-	draw_string(font, Vector2(cx - 60, 52), "CREDITS",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 34, Color("#ffd700"))
-	draw_rect(Rect2(40, 75, C.W - 80, 1), Color("#1a3060"))
+	# Ambient red glow behind heart
+	for i in range(7):
+		var r: float = 55.0 + i * 30.0
+		var a: float = 0.07 * (1.0 - i / 7.0) * (0.65 + 0.35 * sin(_frame * 0.07))
+		_ell(Vector2(cx, 270.0), r, r * 0.8, Color(1.0, 0.08, 0.2, a))
 
-	# ── Dedication ─────────────────────────────────────────────────────
-	var heart_pulse: float = 0.85 + 0.15 * sin(_frame * 0.06)
-	var heart_col: Color = Color(1.0, 0.25, 0.35, heart_pulse)
-	draw_string(font, Vector2(cx - 10, 105), "♥",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 28, heart_col)
-	draw_string(font, Vector2(40, 136), "Andrew & Lucy",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color(1.0, 0.82, 0.88, 0.95))
-	draw_string(font, Vector2(40, 160), "in memory of Beloved Moty...",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 17, Color(0.85, 0.72, 0.78, 0.8))
-	draw_rect(Rect2(40, 178, C.W - 80, 1), Color("#1a3060", 0.6))
+	# Big pulsing heart — scale 120..160px
+	var hp: float = 0.82 + 0.18 * sin(_frame * 0.07)
+	var hs: int = int(150.0 * hp)
+	var hw: float = font.get_string_size("♥", HORIZONTAL_ALIGNMENT_LEFT, -1, hs).x
+	# Dark shadow
+	draw_string(font, Vector2(cx - hw * 0.5 + 5, 315.0 + 6), "♥",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, hs, Color(0.3, 0.0, 0.05, 0.6))
+	# Red heart
+	draw_string(font, Vector2(cx - hw * 0.5, 315.0), "♥",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, hs, Color(1.0, 0.06, 0.18, 1.0))
 
-	var rows: Array = [
-		["Игра",         "Хомяк в Лабиринте"],
-		["Движок",       "Godot 4.6.1 / GDScript"],
-		["Разработка",   "AndriiDiabolus"],
-		["", ""],
-		["— Звуки —",    ""],
-		["eat_nut.mp3",      "orangefreesounds.com (CC BY-NC 4.0)"],
-		["burrow.wav",       "Juhani Junkala (CC0)"],
-		["teleport.wav",     "Juhani Junkala (CC0)"],
-		["llama_catch.wav",  "Juhani Junkala (CC0)"],
-		["win.wav",          "Juhani Junkala (CC0)"],
-		["bg_music.ogg",     "Eric Matyas — Arcade Puzzler (CC-BY 3.0)"],
-		["rabbit_laugh.ogg", "AntumDeluge (CC0)"],
-		["", ""],
-		["— Шрифт —",    ""],
-		["flintstone.ttf",   "wfonts.com (Free)"],
-	]
-	var y: float = 194.0
-	for row in rows:
-		if row[0] == "" and row[1] == "":
-			y += 8.0
-			continue
-		if row[1] == "":
-			draw_string(font, Vector2(40, y), row[0],
-				HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("#ffd700", 0.85))
-		else:
-			draw_string(font, Vector2(40, y), row[0] + ":",
-				HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1, 1, 1, 0.4))
-			draw_string(font, Vector2(210, y), row[1],
-				HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.7, 0.85, 1.0, 0.85))
-		y += 20.0
+	# Dedication text — centred
+	var name_sz: int = 30
+	var name_str: String = "Andrew & Lucy"
+	var name_w: float = font.get_string_size(name_str, HORIZONTAL_ALIGNMENT_LEFT, -1, name_sz).x
+	draw_string(font, Vector2(cx - name_w * 0.5, 395.0), name_str,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, name_sz, Color(1.0, 0.86, 0.91, 0.97))
+
+	var mem_sz: int = 21
+	var mem_str: String = "in memory of Beloved Moty..."
+	var mem_w: float = font.get_string_size(mem_str, HORIZONTAL_ALIGNMENT_LEFT, -1, mem_sz).x
+	draw_string(font, Vector2(cx - mem_w * 0.5, 432.0), mem_str,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, mem_sz, Color(0.88, 0.72, 0.78, 0.85))
 
 	# Back button
-	var br := Rect2(cx - 130, 645, 260, 46)
+	var br := Rect2(cx - 130, 610, 260, 46)
 	_menu_btn_rects["back"] = br
 	draw_rect(br, Color("#0d1e38"))
 	draw_rect(br, Color(0.45, 0.5, 0.8, 0.65), false, 2.0)
-	draw_string(font, Vector2(cx - 70, 677), "←  НАЗАД",
+	draw_string(font, Vector2(cx - 70, 642), "←  НАЗАД",
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(0.65, 0.72, 1.0))
-	draw_string(font, Vector2(cx - 110, 708), "Любая клавиша — назад",
+	draw_string(font, Vector2(cx - 110, 672), "Любая клавиша — назад",
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(1, 1, 1, 0.2))
 
 
