@@ -24,8 +24,10 @@ const MB_BURROW_X: float = 820.0
 const MB_BURROW_Y: float = 980.0
 
 # ── Game state ────────────────────────────────────────────────────────
-# splash → play → (lost | won_name) → (splash | won) → splash
-var _state: String = "splash"
+# menu → (splash | play) → (lost | won_name) → (won) → menu
+var _state: String = "menu"
+var _music_on: bool = true
+var _menu_btn_rects: Dictionary = {}   # "play","music","credits","back" → Rect2
 var _game_start_ms: int = 0
 var _game_time_ms: int = 0
 var _win_anim_t: int = 0
@@ -85,6 +87,7 @@ func _ready() -> void:
 	_setup_audio()
 	_load_scores()
 	_maze = _maze_gen.make_maze()
+	_fetch_online_scores()
 	queue_redraw()
 
 
@@ -371,12 +374,21 @@ func _input(event: InputEvent) -> void:
 	if _state == "won_name":
 		return
 
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_handle_menu_click(event.position)
+		return
+
 	if event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
 		match _state:
+			"menu":
+				_start_game()
 			"splash":
 				_start_game()
+			"credits":
+				_state = "menu"
+				queue_redraw()
 			"lost", "won":
-				_state = "splash"
+				_state = "menu"
 				_fetch_online_scores()
 				queue_redraw()
 		return
@@ -436,14 +448,21 @@ func _handle_screen_input(event: InputEvent) -> void:
 	else:
 		pos = event.position; finger = event.index; pressed = true
 
-	# State transitions: any tap on non-play screens
+	# State transitions: taps on non-play screens
 	if event is InputEventScreenTouch and pressed:
 		match _state:
+			"menu":
+				_handle_menu_click(pos)
+				return
+			"credits":
+				_state = "menu"
+				queue_redraw()
+				return
 			"splash":
 				_start_game()
 				return
 			"lost", "won":
-				_state = "splash"
+				_state = "menu"
 				_fetch_online_scores()
 				queue_redraw()
 				return
@@ -476,6 +495,26 @@ func _mb_action_at(pos: Vector2) -> String:
 		if pos.distance_to(dpad_centers[dir]) <= MB_BTN_R + 16:
 			return dir
 	return ""
+
+
+func _handle_menu_click(pos: Vector2) -> void:
+	if _state == "menu":
+		if _menu_btn_rects.has("play") and _menu_btn_rects["play"].has_point(pos):
+			_start_game()
+		elif _menu_btn_rects.has("music") and _menu_btn_rects["music"].has_point(pos):
+			_music_on = not _music_on
+			if _music_on:
+				_snd_music.play()
+			else:
+				_snd_music.stop()
+			queue_redraw()
+		elif _menu_btn_rects.has("credits") and _menu_btn_rects["credits"].has_point(pos):
+			_state = "credits"
+			queue_redraw()
+	elif _state == "credits":
+		if _menu_btn_rects.has("back") and _menu_btn_rects["back"].has_point(pos):
+			_state = "menu"
+			queue_redraw()
 
 
 # ── Process ───────────────────────────────────────────────────────────
@@ -627,6 +666,18 @@ func _random_far_cell(from_x: int, from_y: int, min_dist: int) -> Vector2i:
 
 # ── Draw ──────────────────────────────────────────────────────────────
 func _draw() -> void:
+	if _state == "menu":
+		_draw_menu()
+		if _show_touch:
+			_draw_mobile_controls()
+		return
+
+	if _state == "credits":
+		_draw_credits()
+		if _show_touch:
+			_draw_mobile_controls()
+		return
+
 	if _state == "splash":
 		_draw_splash()
 		if _show_touch:
@@ -680,6 +731,132 @@ func _draw() -> void:
 
 	if _show_touch:
 		_draw_mobile_controls()
+
+
+# ── Main menu ─────────────────────────────────────────────────────────
+func _draw_menu() -> void:
+	var font := ThemeDB.fallback_font
+	var cx: float = C.W * 0.5
+	var total_h: float = C.H + C.HUD + C.CTRL_H
+
+	draw_rect(Rect2(0, 0, C.W, total_h), Color("#050510"))
+	for i in range(10):
+		var r: float = (10 - i) * 52.0
+		var a: float = 0.032 * (i / 10.0)
+		_ell(Vector2(cx, 300.0), r, r * 0.55, Color(0.15, 0.25, 0.85, a))
+
+	# HAMSTER MAZE title (stone font, Flintstones style)
+	var y_offs: Array = [0.0, -8.0, 5.0, -9.0, 7.0, -4.0, 9.0, -6.0, 4.0, -7.0, 5.0, -5.0]
+	_draw_rocky_word("HAMSTER", 0.0, float(C.W), 155.0, 105, y_offs)
+	_draw_rocky_word("MAZE",    0.0, float(C.W), 265.0, 115, y_offs)
+
+	draw_string(font, Vector2(cx - 90, 300.0), "Собери все орехи!",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.55, 0.75, 1.0, 0.55))
+
+	# ── Buttons ────────────────────────────────────────────────────────
+	var bw: float = 290.0
+	var bh: float = 54.0
+	var bx: float = cx - bw * 0.5
+	var pulse: float = 1.0 + 0.03 * sin(_frame * 0.05)
+
+	# PLAY
+	var py: float = 348.0
+	var pw: float = bw * pulse
+	_menu_btn_rects["play"] = Rect2(bx, py, bw, bh)
+	draw_rect(Rect2(cx - pw * 0.5, py, pw, bh), Color("#0d2040"))
+	draw_rect(Rect2(cx - pw * 0.5, py, pw, bh), Color("#ffd700", 0.85), false, 2.5)
+	draw_string(font, Vector2(cx - 68, py + 36), "▶   ИГРАТЬ",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 26, Color("#ffd700"))
+
+	# MUSIC
+	var my: float = 427.0
+	_menu_btn_rects["music"] = Rect2(bx, my, bw, bh)
+	var mbg: Color = Color("#0a1e3a") if _music_on else Color("#1a0808")
+	var mbr: Color = Color(0.35, 0.7, 1.0, 0.7) if _music_on else Color(0.5, 0.2, 0.2, 0.65)
+	draw_rect(Rect2(bx, my, bw, bh), mbg)
+	draw_rect(Rect2(bx, my, bw, bh), mbr, false, 2.0)
+	var mlabel: String = "♪   МУЗЫКА   ON" if _music_on else "♪   МУЗЫКА   OFF"
+	var mcol: Color = Color(0.4, 0.8, 1.0) if _music_on else Color(0.65, 0.3, 0.3)
+	draw_string(font, Vector2(cx - 90, my + 36), mlabel,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 23, mcol)
+
+	# CREDITS
+	var cy2: float = 506.0
+	_menu_btn_rects["credits"] = Rect2(bx, cy2, bw, bh)
+	draw_rect(Rect2(bx, cy2, bw, bh), Color(0.05, 0.07, 0.16))
+	draw_rect(Rect2(bx, cy2, bw, bh), Color(0.45, 0.5, 0.72, 0.5), false, 1.5)
+	draw_string(font, Vector2(cx - 55, cy2 + 36), "CREDITS",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color(0.62, 0.68, 0.88, 0.85))
+
+	# Online leaderboard (compact, bottom of game area)
+	if not _online_scores.is_empty():
+		var lby: float = 590.0
+		draw_string(font, Vector2(cx - 80, lby), "Онлайн рекорды",
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#ffd700", 0.7))
+		draw_rect(Rect2(cx - 130, lby + 4, 260, 1), Color("#1a3060"))
+		lby += 20
+		for i in range(min(_online_scores.size(), 5)):
+			var sc: Dictionary = _online_scores[i]
+			var rc: Color = Color("#ffd700") if i == 0 else Color(0.7, 0.85, 1.0, 0.75)
+			draw_string(font, Vector2(cx - 130, lby), "%d. %s" % [i + 1, sc.name],
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 13, rc)
+			draw_string(font, Vector2(cx + 60, lby), _fmt_time(sc.time_ms),
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 13, rc)
+			lby += 20
+	elif _fetching:
+		draw_string(font, Vector2(cx - 40, 600), "Загрузка...",
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, 0.25))
+
+
+# ── Credits screen ─────────────────────────────────────────────────────
+func _draw_credits() -> void:
+	var font := ThemeDB.fallback_font
+	var cx: float = C.W * 0.5
+	draw_rect(Rect2(0, 0, C.W, C.H + C.HUD + C.CTRL_H), Color("#050510"))
+
+	draw_string(font, Vector2(cx - 60, 55), "CREDITS",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 34, Color("#ffd700"))
+	draw_rect(Rect2(40, 78, C.W - 80, 1), Color("#1a3060"))
+
+	var rows: Array = [
+		["Игра",         "Хомяк в Лабиринте"],
+		["Движок",       "Godot 4.6.1 / GDScript"],
+		["Разработка",   "AndriiDiabolus"],
+		["", ""],
+		["— Звуки —",    ""],
+		["eat_nut.mp3",      "orangefreesounds.com (CC BY-NC 4.0)"],
+		["burrow.wav",       "Juhani Junkala (CC0)"],
+		["teleport.wav",     "Juhani Junkala (CC0)"],
+		["llama_catch.wav",  "Juhani Junkala (CC0)"],
+		["win.wav",          "Juhani Junkala (CC0)"],
+		["bg_music.ogg",     "Eric Matyas — Arcade Puzzler (CC-BY 3.0)"],
+		["rabbit_laugh.ogg", "AntumDeluge (CC0)"],
+		["", ""],
+		["— Шрифт —",    ""],
+		["flintstone.ttf",   "wfonts.com (Free)"],
+	]
+	var y: float = 104.0
+	for row in rows:
+		if row[0] == "" and row[1] == "":
+			y += 10.0
+			continue
+		if row[1] == "":
+			draw_string(font, Vector2(40, y), row[0],
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#ffd700", 0.85))
+		else:
+			draw_string(font, Vector2(40, y), row[0] + ":",
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, 0.45))
+			draw_string(font, Vector2(210, y), row[1],
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.7, 0.85, 1.0, 0.9))
+		y += 22.0
+
+	# Back button
+	var br := Rect2(cx - 130, 638, 260, 46)
+	_menu_btn_rects["back"] = br
+	draw_rect(br, Color("#0d1e38"))
+	draw_rect(br, Color(0.45, 0.5, 0.8, 0.65), false, 2.0)
+	draw_string(font, Vector2(cx - 70, 670), "←  НАЗАД",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(0.65, 0.72, 1.0))
 
 
 # ── Splash screen ─────────────────────────────────────────────────────
@@ -1140,11 +1317,12 @@ func _draw_mobile_controls() -> void:
 	_draw_ctrl_title()
 
 	if _state != "play":
-		# "Tap" at bottom of zone with dark pill for readability
-		var tap_y := zone_y + float(C.CTRL_H) - 22.0
-		draw_rect(Rect2(C.W * 0.5 - 82.0, tap_y - 19.0, 164.0, 24.0), Color(0, 0, 0, 0.55))
-		draw_string(font, Vector2(C.W * 0.5 - 62.0, tap_y),
-			"Tap — продолжить", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, 0.55))
+		# Show "Tap to continue" only on end screens, not on menu/credits
+		if _state in ["lost", "won", "splash"]:
+			var tap_y := zone_y + float(C.CTRL_H) - 22.0
+			draw_rect(Rect2(C.W * 0.5 - 82.0, tap_y - 19.0, 164.0, 24.0), Color(0, 0, 0, 0.55))
+			draw_string(font, Vector2(C.W * 0.5 - 62.0, tap_y),
+				"Tap — продолжить", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, 0.55))
 		return
 
 	var active: Array = _touch_dirs.values()
