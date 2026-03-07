@@ -65,6 +65,7 @@ var _fetching: bool = false
 var _player_uid: String = ""
 var _js_get_cb  = null   # JavaScriptObject — web only
 var _js_post_cb = null   # JavaScriptObject — web only
+var _stone_font: FontFile = null
 
 # ── Leaderboard (local, persistent) ──────────────────────────────────
 var _scores: Array = []   # [{name:String, time_ms:int}], sorted asc
@@ -78,6 +79,7 @@ var _name_label: Label = null
 func _ready() -> void:
 	_maze_gen = MazeGenerator.new()
 	_show_touch = true  # TEST: force touch controls visible
+	_stone_font = load("res://assets/fonts/flintstone.ttf")
 	_setup_name_input()
 	_setup_http()
 	_setup_audio()
@@ -1176,21 +1178,18 @@ func _draw_mobile_controls() -> void:
 
 func _draw_ctrl_title() -> void:
 	var zone_y: float = C.H + C.HUD
-	# Bigger irregular offsets — Flintstones stone wobble
-	var y_offs: Array = [0.0, -13.0, 9.0, -15.0, 11.0, -6.0, 14.0, -10.0, 7.0, -12.0, 8.0, -9.0]
-	var x_offs: Array = [3.0,  -5.0, 6.0,  -3.0,  5.0, -6.0,  2.0,  -4.0, 6.0,  -2.0, 4.0, -5.0]
-	# 75% of 360px zone = ~270px text, ~45px margins top & bottom
-	# sz=130 ascent≈104px → HAMSTER baseline zone_y+155, MAZE sz=145 baseline zone_y+310
-	_draw_rocky_word("HAMSTER", 0.0, float(C.W), zone_y + 155.0, 130, y_offs, x_offs)
-	_draw_rocky_word("MAZE",    0.0, float(C.W), zone_y + 310.0, 145, y_offs, x_offs)
+	# Stone font has built-in rocky shape; small y_offs for stacked-stone height variation
+	var y_offs: Array = [0.0, -8.0, 5.0, -9.0, 7.0, -4.0, 9.0, -6.0, 4.0, -7.0, 5.0, -5.0]
+	_draw_rocky_word("HAMSTER", 0.0, float(C.W), zone_y + 155.0, 130, y_offs)
+	_draw_rocky_word("MAZE",    0.0, float(C.W), zone_y + 310.0, 145, y_offs)
 
 
-func _draw_rocky_word(text: String, zone_x: float, zone_w: float, baseline_y: float, sz: int, y_offs: Array, x_offs: Array) -> void:
-	var font    := ThemeDB.fallback_font
+func _draw_rocky_word(text: String, zone_x: float, zone_w: float, baseline_y: float, sz: int, y_offs: Array) -> void:
+	var font: Font = _stone_font if _stone_font else ThemeDB.fallback_font
 	var fill    := Color(1.00, 0.88, 0.10, 1.0)   # warm yellow
-	var outline := Color(0.82, 0.20, 0.02, 1.0)   # red-orange
+	var outline := Color(0.82, 0.20, 0.02, 1.0)   # red-orange contour
 	var shadow  := Color(0.00, 0.00, 0.00, 0.65)  # dark drop shadow
-	var glow    := Color(1.00, 0.50, 0.05, 0.45)  # orange inner glow
+	var glow    := Color(1.00, 0.50, 0.05, 0.40)  # orange inner glow
 
 	var n      := text.length()
 	var slot_w := zone_w / float(n)
@@ -1198,33 +1197,32 @@ func _draw_rocky_word(text: String, zone_x: float, zone_w: float, baseline_y: fl
 	for i in range(n):
 		var ch   := text[i]
 		var dy   := y_offs[i % y_offs.size()] as float
-		var dx   := x_offs[i % x_offs.size()] as float
 		var ch_w := font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, sz).x
-		var x    := zone_x + float(i) * slot_w + (slot_w - ch_w) * 0.5 + dx
+		var x    := zone_x + float(i) * slot_w + (slot_w - ch_w) * 0.5
 		var pos  := Vector2(x, baseline_y + dy)
 
-		# Layer 1 — deep drop shadow (offset down-right)
+		# Layer 1 — deep drop shadow
 		for ox in [-5, 0, 5]:
 			for oy in [-5, 0, 5]:
 				if ox != 0 or oy != 0:
 					draw_string(font, pos + Vector2(ox, oy + 4), ch,
 						HORIZONTAL_ALIGNMENT_LEFT, -1, sz, shadow)
 
-		# Layer 2 — thick red-orange stone outline (4px radius, 8 dir)
+		# Layer 2 — thick red-orange outline (4px)
 		for ox in [-4, -2, 0, 2, 4]:
 			for oy in [-4, -2, 0, 2, 4]:
 				if ox != 0 or oy != 0:
 					draw_string(font, pos + Vector2(ox, oy), ch,
 						HORIZONTAL_ALIGNMENT_LEFT, -1, sz, outline)
 
-		# Layer 3 — orange inner glow (tighter, 2px)
+		# Layer 3 — orange inner glow
 		for ox in [-2, 0, 2]:
 			for oy in [-2, 0, 2]:
 				if ox != 0 or oy != 0:
 					draw_string(font, pos + Vector2(ox, oy), ch,
 						HORIZONTAL_ALIGNMENT_LEFT, -1, sz, glow)
 
-		# Layer 4 — yellow fill on top
+		# Layer 4 — yellow fill
 		draw_string(font, pos, ch, HORIZONTAL_ALIGNMENT_LEFT, -1, sz, fill)
 
 
