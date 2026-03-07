@@ -10,7 +10,7 @@ const FOG_ALPHA:   float = 0.40  # max fog darkness
 
 # ── Movement timer ────────────────────────────────────────────────────
 const MOVE_INTERVAL: float = 8.0 / 60.0
-const WIN_SPIN_DUR: int = 185  # кадров (~3 сек) — анимация вращающегося хомяка
+const WIN_SPIN_DUR: int = 240  # кадров (~4 сек) — танец хомяка
 var _move_timer: float = 0.0
 var _frame: int = 0
 
@@ -1277,32 +1277,86 @@ func _draw_lost_overlay() -> void:
 
 
 func _draw_win_anim() -> void:
-	var p: float = min(float(_win_anim_t) / WIN_SPIN_DUR, 1.0)
-
-	# Затемнение нарастает
-	draw_rect(Rect2(0, 0, C.W, C.H + C.HUD), Color(0, 0, 0, p * 0.82))
-
-	# Хомяк растёт первые 70%, потом держит максимум
-	var max_r: float = min(C.W, C.H) * 0.44
-	var r: float = max_r * (p / 0.7 if p < 0.7 else 1.0)
-	var rot: float = p * PI * 8.0  # ~4 полных оборота
+	var t: int = _win_anim_t
 	var cx: float = C.W * 0.5
-	var cy: float = C.H * 0.5 - 20.0
+	var cy: float = C.H * 0.5 - 10.0
+	var font := ThemeDB.fallback_font
 
-	# Рисуем хомяка с трансформацией (вращение + масштаб)
-	var sc: float = r / 30.0
-	draw_set_transform(Vector2(cx, cy), rot, Vector2(sc, sc))
+	# Фон затемняется в первые 40 кадров
+	draw_rect(Rect2(0, 0, C.W, C.H + C.HUD), Color(0, 0, 0, min(float(t) / 40.0, 1.0) * 0.82))
+
+	# Базовый масштаб: хомяк вырастает до размера 5x за 25 кадров
+	var base_sc: float = min(float(t) / 25.0, 1.0) * 5.0
+
+	var sc_x: float = base_sc
+	var sc_y: float = base_sc
+	var rot: float  = 0.0
+	var ox:  float  = 0.0
+	var oy:  float  = 0.0
+
+	if t < 60:
+		# Фаза 1: Прыжки (3 раза) — squish при приземлении
+		var bounce: float = abs(sin(float(t) / 60.0 * PI * 3.0))
+		oy = -bounce * 30.0
+		var sq: float = lerp(1.0, 0.78, 1.0 - bounce)
+		sc_x = base_sc / sq
+		sc_y = base_sc * sq
+	elif t < 120:
+		# Фаза 2: Раскачка влево-вправо (2 волны)
+		var st: float = float(t - 60) / 60.0
+		rot = sin(st * TAU * 2.0) * 0.35
+		ox  = sin(st * TAU * 2.0) * 20.0
+		oy  = -abs(sin(st * TAU * 2.0)) * 8.0
+	elif t < 165:
+		# Фаза 3: Один полный оборот + масштаб пульсирует
+		var sp: float = float(t - 120) / 45.0
+		rot  = sp * TAU
+		sc_x = base_sc * (1.0 + sin(sp * TAU) * 0.15)
+		sc_y = base_sc * (1.0 - sin(sp * TAU) * 0.15)
+	else:
+		# Фаза 4: Финал — лёгкое покачивание
+		var fp: float = float(t - 165)
+		rot = sin(fp * 0.10) * 0.15
+		oy  = -abs(sin(fp * 0.13)) * 8.0
+
+	# Рисуем хомяка
+	draw_set_transform(Vector2(cx + ox, cy + oy), rot, Vector2(sc_x, sc_y))
 	_draw_hamster(0.0, 0.0, false)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
-	# "ПОБЕДА!" появляется во второй половине анимации
-	if p > 0.5:
-		var tp: float = (p - 0.5) / 0.5
-		var font := ThemeDB.fallback_font
-		var fs: int = int(36 + 18 * tp)
+	# Искры вращаются вокруг хомяка (начиная с фазы 3)
+	if t >= 110:
+		var sp_p: float = min(float(t - 110) / 25.0, 1.0)
+		var sr: float = base_sc * 25.0 + 18.0
+		for i in 8:
+			var angle: float = float(i) / 8.0 * TAU + float(t) * 0.045
+			var sx: float = cx + cos(angle) * sr
+			var sy: float = cy + sin(angle) * sr * 0.55
+			var flicker: float = 0.5 + 0.5 * sin(float(t) * 0.28 + float(i) * 1.1)
+			draw_circle(Vector2(sx, sy), 5.0 * sp_p, Color(1.0, 0.9, 0.1, sp_p * flicker))
+			draw_circle(Vector2(sx, sy), 2.5 * sp_p, Color(1.0, 1.0, 1.0, sp_p * flicker))
+
+	# Плавающие нотки ♪ (фаза 2+)
+	if t >= 60:
+		for i in 3:
+			var nt: float = float(t - 60 + i * 55)
+			var note_cycle: float = fmod(nt, 75.0) / 75.0
+			if note_cycle > 0.88:
+				continue
+			var nx: float = cx + (i - 1) * 55.0 + sin(nt * 0.07) * 12.0
+			var ny: float = cy - base_sc * 20.0 - note_cycle * 65.0
+			var nalpha: float = (1.0 - note_cycle) * min(float(t - 60) / 20.0, 1.0)
+			draw_string(font, Vector2(nx, ny), "♪", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color(1.0, 0.85, 0.3, nalpha))
+
+	# "ПОБЕДА!" — появляется в фазе 2
+	if t >= 70:
+		var tp: float  = min(float(t - 70) / 35.0, 1.0)
 		var text: String = "ПОБЕДА!"
+		var fs: int = 48
+		if t >= 165:
+			fs = int(48.0 * (1.0 + 0.04 * sin(float(t - 165) * 0.12)))
 		var tw: float = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-		draw_string(font, Vector2(cx - tw * 0.5, cy - r - 20.0), text,
+		draw_string(font, Vector2(cx - tw * 0.5, cy - base_sc * 28.0 - 25.0), text,
 			HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1.0, 0.84, 0.0, tp))
 
 
