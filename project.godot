@@ -27,6 +27,6 @@ C="*res://scripts/constants.gd"
 [display]
 
 window/size/viewport_width=900
-window/size/viewport_height=982
+window/size/viewport_height=1102
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"

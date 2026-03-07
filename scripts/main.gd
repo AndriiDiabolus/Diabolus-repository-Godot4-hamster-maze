@@ -17,11 +17,11 @@ var _frame: int = 0
 var _show_touch: bool = false
 var _touch_dirs: Dictionary = {}   # finger_id -> "up"/"down"/"left"/"right"
 const MB_DPAD_CX:  float = 140.0
-const MB_DPAD_CY:  float = 862.0   # center of CTRL zone (742+120)
+const MB_DPAD_CY:  float = 980.0   # bottom of CTRL zone, title takes top portion
 const MB_BTN_STEP: float = 76.0
 const MB_BTN_R:    float = 38.0
 const MB_BURROW_X: float = 820.0
-const MB_BURROW_Y: float = 862.0
+const MB_BURROW_Y: float = 980.0
 
 # ── Game state ────────────────────────────────────────────────────────
 # splash → play → (lost | won_name) → (splash | won) → splash
@@ -1098,8 +1098,11 @@ func _draw_mobile_controls() -> void:
 	draw_rect(Rect2(0, zone_y, C.W, C.CTRL_H), Color("#0a1535"))
 	draw_rect(Rect2(0, zone_y, C.W, 2), Color("#1a3060"))  # top border line
 
+	# Flintstones-style title — always visible
+	_draw_ctrl_title()
+
 	if _state != "play":
-		draw_string(font, Vector2(C.W * 0.5 - 60, zone_y + C.CTRL_H * 0.5 + 8),
+		draw_string(font, Vector2(C.W * 0.5 - 62, zone_y + C.CTRL_H * 0.73),
 			"Tap — продолжить", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, 0.35))
 		return
 
@@ -1130,6 +1133,47 @@ func _draw_mobile_controls() -> void:
 		"НОРА", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0.4, 1.0, 0.4, 0.65))
 	draw_string(font, Vector2(MB_BURROW_X - 13, MB_BURROW_Y - 14),
 		"[SP]", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, 0.28))
+
+
+func _draw_ctrl_title() -> void:
+	var zone_y: float = C.H + C.HUD
+	# Per-char vertical offsets for rocky/stone uneven look
+	var y_offs: Array = [0.0, -5.0, 3.0, -6.0, 4.0, -2.0, 5.0, -4.0, 2.0, -5.0, 3.0, -3.0]
+	# Line 1: HAMSTER (baseline ~57px below zone top)
+	_draw_rocky_word("HAMSTER", C.W * 0.5, zone_y + 60.0, 44, y_offs)
+	# Line 2: MAZE (larger, baseline ~115px below zone top)
+	_draw_rocky_word("MAZE",    C.W * 0.5, zone_y + 112.0, 58, y_offs)
+
+
+func _draw_rocky_word(text: String, cx: float, baseline_y: float, sz: int, y_offs: Array) -> void:
+	var font  := ThemeDB.fallback_font
+	var fill    := Color(1.0,  0.88, 0.10, 1.0)   # warm yellow
+	var outline := Color(0.80, 0.20, 0.02, 1.0)   # red-orange contour
+	var shadow  := Color(0.0,  0.0,  0.0,  0.55)  # dark shadow
+
+	var total_w: float = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, sz).x
+	var x: float = cx - total_w * 0.5
+
+	for i in range(text.length()):
+		var ch  := text[i]
+		var dy  := y_offs[i % y_offs.size()] as float
+		var ch_w: float = font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, sz).x
+		var pos := Vector2(x, baseline_y + dy)
+
+		# Drop shadow
+		draw_string(font, pos + Vector2(3, 5), ch, HORIZONTAL_ALIGNMENT_LEFT, -1, sz, shadow)
+
+		# Red-orange outline: 8 directions × 3px
+		for ox in [-3, 0, 3]:
+			for oy in [-3, 0, 3]:
+				if ox != 0 or oy != 0:
+					draw_string(font, pos + Vector2(ox, oy), ch,
+						HORIZONTAL_ALIGNMENT_LEFT, -1, sz, outline)
+
+		# Yellow fill on top
+		draw_string(font, pos, ch, HORIZONTAL_ALIGNMENT_LEFT, -1, sz, fill)
+
+		x += ch_w
 
 
 func _mb_arrow(center: Vector2, dir: String) -> PackedVector2Array:
