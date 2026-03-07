@@ -1102,8 +1102,9 @@ func _draw_mobile_controls() -> void:
 	_draw_ctrl_title()
 
 	if _state != "play":
-		draw_string(font, Vector2(C.W * 0.5 - 62, zone_y + C.CTRL_H * 0.73),
-			"Tap — продолжить", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, 0.35))
+		# y=952 sits in the gap between HAMSTER (bottom≈912) and MAZE (top≈964)
+		draw_string(font, Vector2(C.W * 0.5 - 62, zone_y + 210.0),
+			"Tap — продолжить", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, 0.40))
 		return
 
 	var active: Array = _touch_dirs.values()
@@ -1138,30 +1139,31 @@ func _draw_mobile_controls() -> void:
 func _draw_ctrl_title() -> void:
 	var zone_y: float = C.H + C.HUD
 	# Per-char vertical offsets for rocky/stone uneven look
-	var y_offs: Array = [0.0, -5.0, 3.0, -6.0, 4.0, -2.0, 5.0, -4.0, 2.0, -5.0, 3.0, -3.0]
-	# Line 1: HAMSTER (baseline ~57px below zone top)
-	_draw_rocky_word("HAMSTER", C.W * 0.5, zone_y + 60.0, 44, y_offs)
-	# Line 2: MAZE (larger, baseline ~115px below zone top)
-	_draw_rocky_word("MAZE",    C.W * 0.5, zone_y + 112.0, 58, y_offs)
+	var y_offs: Array = [0.0, -6.0, 4.0, -7.0, 5.0, -3.0, 6.0, -5.0, 3.0, -6.0, 4.0, -4.0]
+	# Both words stretched to fill full 900px width, spanning entire zone height
+	_draw_rocky_word("HAMSTER", 0.0, float(C.W), zone_y + 150.0, 130, y_offs)
+	_draw_rocky_word("MAZE",    0.0, float(C.W), zone_y + 335.0, 155, y_offs)
 
 
-func _draw_rocky_word(text: String, cx: float, baseline_y: float, sz: int, y_offs: Array) -> void:
-	var font  := ThemeDB.fallback_font
-	var fill    := Color(1.0,  0.88, 0.10, 1.0)   # warm yellow
-	var outline := Color(0.80, 0.20, 0.02, 1.0)   # red-orange contour
-	var shadow  := Color(0.0,  0.0,  0.0,  0.55)  # dark shadow
+func _draw_rocky_word(text: String, zone_x: float, zone_w: float, baseline_y: float, sz: int, y_offs: Array) -> void:
+	var font    := ThemeDB.fallback_font
+	var fill    := Color(1.0,  0.88, 0.10, 1.0)
+	var outline := Color(0.80, 0.20, 0.02, 1.0)
+	var shadow  := Color(0.0,  0.0,  0.0,  0.55)
 
-	var total_w: float = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, sz).x
-	var x: float = cx - total_w * 0.5
+	var n      := text.length()
+	var slot_w := zone_w / float(n)   # evenly distribute each char across full width
 
-	for i in range(text.length()):
-		var ch  := text[i]
-		var dy  := y_offs[i % y_offs.size()] as float
-		var ch_w: float = font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, sz).x
-		var pos := Vector2(x, baseline_y + dy)
+	for i in range(n):
+		var ch   := text[i]
+		var dy   := y_offs[i % y_offs.size()] as float
+		var ch_w := font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, sz).x
+		# Centre glyph in its equal-width slot
+		var x    := zone_x + float(i) * slot_w + (slot_w - ch_w) * 0.5
+		var pos  := Vector2(x, baseline_y + dy)
 
 		# Drop shadow
-		draw_string(font, pos + Vector2(3, 5), ch, HORIZONTAL_ALIGNMENT_LEFT, -1, sz, shadow)
+		draw_string(font, pos + Vector2(4, 6), ch, HORIZONTAL_ALIGNMENT_LEFT, -1, sz, shadow)
 
 		# Red-orange outline: 8 directions × 3px
 		for ox in [-3, 0, 3]:
@@ -1172,8 +1174,6 @@ func _draw_rocky_word(text: String, cx: float, baseline_y: float, sz: int, y_off
 
 		# Yellow fill on top
 		draw_string(font, pos, ch, HORIZONTAL_ALIGNMENT_LEFT, -1, sz, fill)
-
-		x += ch_w
 
 
 func _mb_arrow(center: Vector2, dir: String) -> PackedVector2Array:
