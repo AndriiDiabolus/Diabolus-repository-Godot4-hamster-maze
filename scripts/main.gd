@@ -348,14 +348,16 @@ func _input(event: InputEvent) -> void:
 	if _state != "play":
 		return
 
-	match event.keycode:
+	# physical_keycode works reliably in web builds for letter keys (WASD)
+	var kc: int = event.physical_keycode if event.physical_keycode != KEY_NONE else event.keycode
+	match kc:
 		KEY_SPACE:
 			_do_burrow()
 			return
 
 	var dx: int = 0
 	var dy: int = 0
-	match event.keycode:
+	match kc:
 		KEY_W, KEY_UP:    dy = -1
 		KEY_S, KEY_DOWN:  dy =  1
 		KEY_A, KEY_LEFT:  dx = -1
