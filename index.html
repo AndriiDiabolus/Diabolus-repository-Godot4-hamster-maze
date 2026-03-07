@@ -92,7 +92,7 @@ body {
 		</style>
 		<link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
 <link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
-<style>html,body{background:#0a1535;margin:0;padding:0;overflow:hidden;}</style><script>if('ontouchstart' in window||navigator.maxTouchPoints>0){(function(){function f(){var c=document.getElementById('canvas');if(c){c.style.setProperty('width',window.innerWidth+'px','important');c.style.setProperty('height',window.innerHeight+'px','important');}}window.addEventListener('resize',f);document.addEventListener('DOMContentLoaded',function(){f();var t=setInterval(f,50);setTimeout(function(){clearInterval(t);},4000);});})();}</script>
+<style>html,body{background:#0a1535;margin:0;padding:0;overflow:hidden;}</style><script>document.addEventListener('DOMContentLoaded',function(){function fc(){var c=document.getElementById('canvas');if(c){c.setAttribute('tabindex','0');c.focus();}}[300,1000,2500].forEach(function(t){setTimeout(fc,t);});document.addEventListener('click',fc);if('ontouchstart' in window||navigator.maxTouchPoints>0){function f(){var c=document.getElementById('canvas');if(c){c.style.setProperty('width',window.innerWidth+'px','important');c.style.setProperty('height',window.innerHeight+'px','important');}}window.addEventListener('resize',f);f();var t=setInterval(f,50);setTimeout(function(){clearInterval(t);},4000);}});</script>
 	</head>
 	<body>
 		<canvas id="canvas">
@@ -111,7 +111,7 @@ body {
 
 		<script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":3244940,"index.wasm":37685705},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":3244796,"index.wasm":37685705},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
