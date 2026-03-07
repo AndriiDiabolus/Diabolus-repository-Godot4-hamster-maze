@@ -63,6 +63,8 @@ var _http_get: HTTPRequest = null
 var _online_scores: Array = []
 var _fetching: bool = false
 var _player_uid: String = ""
+var _js_get_cb  = null   # JavaScriptObject — web only
+var _js_post_cb = null   # JavaScriptObject — web only
 
 # ── Leaderboard (local, persistent) ──────────────────────────────────
 var _scores: Array = []   # [{name:String, time_ms:int}], sorted asc
@@ -215,30 +217,58 @@ func _load_uid() -> void:
 
 
 func _post_score(nm: String, time_ms: int) -> void:
-	var headers := PackedStringArray([
-		"apikey: " + SB_KEY,
-		"Authorization: Bearer " + SB_KEY,
-		"Content-Type: application/json",
-		"Prefer: return=minimal"
-	])
-	var body := JSON.stringify({
-		"uid": _player_uid,
-		"name": nm,
-		"time": time_ms,
-		"date": Time.get_date_string_from_system()
+	var body_str := JSON.stringify({
+		"uid": _player_uid, "name": nm,
+		"time": time_ms, "date": Time.get_date_string_from_system()
 	})
-	_http_post.request(SB_URL, headers, HTTPClient.METHOD_POST, body)
+	if OS.get_name() == "Web":
+		_js_post_cb = JavaScriptBridge.create_callback(_on_js_post_done)
+		var js := """
+fetch('%s', {method:'POST',
+  headers:{'apikey':'%s','Authorization':'Bearer %s',
+            'Content-Type':'application/json','Prefer':'return=minimal'},
+  body:'%s'
+}).then(r=>window._gd_post_cb(r.status)).catch(()=>window._gd_post_cb(0));
+""" % [SB_URL, SB_KEY, SB_KEY, body_str.replace("'", "\\'")]
+		JavaScriptBridge.get_interface("window").set("_gd_post_cb", _js_post_cb)
+		JavaScriptBridge.eval(js)
+	else:
+		var headers := PackedStringArray([
+			"apikey: " + SB_KEY, "Authorization: Bearer " + SB_KEY,
+			"Content-Type: application/json", "Prefer: return=minimal"
+		])
+		_http_post.request(SB_URL, headers, HTTPClient.METHOD_POST, body_str)
 
 
 func _fetch_online_scores() -> void:
 	if _fetching:
 		return
 	_fetching = true
-	var headers := PackedStringArray([
-		"apikey: " + SB_KEY,
-		"Authorization: Bearer " + SB_KEY
-	])
-	_http_get.request(SB_URL + "?select=name,time&order=time.asc&limit=10", headers)
+	if OS.get_name() == "Web":
+		_js_get_cb = JavaScriptBridge.create_callback(_on_js_get_done)
+		var url := SB_URL + "?select=name,time&order=time.asc&limit=10"
+		var js := """
+fetch('%s', {headers:{'apikey':'%s','Authorization':'Bearer %s'}})
+  .then(r=>r.text()).then(t=>window._gd_get_cb(t))
+  .catch(()=>window._gd_get_cb('[]'));
+""" % [url, SB_KEY, SB_KEY]
+		JavaScriptBridge.get_interface("window").set("_gd_get_cb", _js_get_cb)
+		JavaScriptBridge.eval(js)
+	else:
+		var headers := PackedStringArray(["apikey: " + SB_KEY, "Authorization: Bearer " + SB_KEY])
+		_http_get.request(SB_URL + "?select=name,time&order=time.asc&limit=10", headers)
+
+
+func _on_js_get_done(args: Array) -> void:
+	_fetching = false
+	var raw: String = str(args[0]) if args.size() > 0 else "[]"
+	_parse_scores_json(raw)
+
+
+func _on_js_post_done(args: Array) -> void:
+	var code: int = int(str(args[0])) if args.size() > 0 else 0
+	if code == 201:
+		_fetch_online_scores()
 
 
 func _on_post_completed(_result: int, response_code: int, _hdrs: PackedStringArray, _body: PackedByteArray) -> void:
@@ -250,8 +280,12 @@ func _on_get_completed(_result: int, response_code: int, _hdrs: PackedStringArra
 	_fetching = false
 	if response_code != 200:
 		return
+	_parse_scores_json(body.get_string_from_utf8())
+
+
+func _parse_scores_json(raw: String) -> void:
 	var json := JSON.new()
-	if json.parse(body.get_string_from_utf8()) != OK:
+	if json.parse(raw) != OK:
 		return
 	var data = json.get_data()
 	if not data is Array:
