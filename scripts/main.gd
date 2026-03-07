@@ -520,18 +520,20 @@ func _mb_action_at(pos: Vector2) -> String:
 
 
 func _handle_menu_click(pos: Vector2) -> void:
+	# На touch-устройствах canvas сжат — увеличиваем зону нажатия
+	var pad: float = 28.0 if _show_touch else 0.0
 	if _state == "menu":
-		if _menu_btn_rects.has("play") and _menu_btn_rects["play"].has_point(pos):
+		if _menu_btn_rects.has("play") and _menu_btn_rects["play"].grow(pad).has_point(pos):
 			_menu_selected = 0
 			_activate_menu_selection()
-		elif _menu_btn_rects.has("music") and _menu_btn_rects["music"].has_point(pos):
+		elif _menu_btn_rects.has("music") and _menu_btn_rects["music"].grow(pad).has_point(pos):
 			_menu_selected = 1
 			_activate_menu_selection()
-		elif _menu_btn_rects.has("credits") and _menu_btn_rects["credits"].has_point(pos):
+		elif _menu_btn_rects.has("credits") and _menu_btn_rects["credits"].grow(pad).has_point(pos):
 			_menu_selected = 2
 			_activate_menu_selection()
 	elif _state == "credits":
-		if _menu_btn_rects.has("back") and _menu_btn_rects["back"].has_point(pos):
+		if _menu_btn_rects.has("back") and _menu_btn_rects["back"].grow(pad).has_point(pos):
 			_state = "menu"
 			queue_redraw()
 
