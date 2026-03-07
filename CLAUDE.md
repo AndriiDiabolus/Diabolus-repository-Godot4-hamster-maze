@@ -24,18 +24,22 @@ scripts/
   bfs_pathfinder.gd  — class BFSPathfinder, BFS pathfinding → Array[Vector2i]
   llama_ai.gd        — class LlamaAI, 4 состояния (patrol/alert/chase/search)
   rh_manager.gd      — class RHManager, 2 пары кроличьих нор (порталов)
-  main.gd            — extends Node2D, вся игровая логика + весь рендер (~1100 строк)
+  main.gd            — extends Node2D, вся игровая логика + весь рендер (~1180 строк)
 scenes/
   Main.tscn          — uid://c431j5hrtri71, Node2D + main.gd
 assets/
   sounds/
-    eat_nut.mp3      — хруст ореха (CC BY-NC 4.0, orangefreesounds.com)
+    eat_nut.mp3      — хруст ореха (CC BY-NC 4.0, orangefreesounds.com) ⚠️ не для коммерции
     burrow.wav       — звук норки (CC0, Juhani Junkala)
     teleport.wav     — звук телепорта (CC0, Juhani Junkala)
     llama_catch.wav  — поимка хомяка (CC0, Juhani Junkala)
-    win.wav          — победный фанфар (CC0, Juhani Junkala)
+    win.wav          — старый победный звук (не используется)
+    win_new.ogg      — победный джингл pizzicato (CC0, Kenney music-jingles pack)
     bg_music.ogg     — фоновая музыка Arcade Puzzler (CC-BY 3.0, Eric Matyas)
     rabbit_laugh.ogg — смех кролика при копании (CC0, AntumDeluge)
+  fonts/
+    flintstone.ttf   — шрифт для заголовка в HTML-зоне (free, wfonts.com)
+export_presets.cfg   — Web export + html/head_include (мобильные контролы в HTML)
 project.godot        — config v5, Godot 4.6, autoload C, viewport 900x742
 hamster_maze.html    — оригинальный HTML файл (reference only)
 ```
@@ -79,9 +83,24 @@ _online_scores: Array    # топ-10 из Supabase
 _player_uid: String      # UUID игрока (хранится в scores.cfg)
 _show_touch: bool        # true если touchscreen доступен
 _touch_dirs: Dictionary  # finger_id -> "up"/"down"/"left"/"right"
+_held_keys: Dictionary   # keycode→bool, web-совместимое удержание клавиш
 _name_layer: CanvasLayer
 _name_edit: LineEdit     # для ввода имени после победы
 _frame: int              # счётчик кадров (для анимаций)
+_win_anim_t: int         # таймер анимации победы (0..WIN_SPIN_DUR=240)
+```
+
+### Анимация победы (танец хомяка)
+```gdscript
+WIN_SPIN_DUR: int = 240  # ~4 секунды при 60fps
+
+# 4 фазы в _draw_win_anim():
+# t 0-60:   Прыжки x3 — bounce с squish (расплющивание при приземлении)
+# t 60-120: Раскачка влево-вправо — sin rotation + ox смещение + ноты ♪
+# t 120-165: Один полный спин (TAU) + пульсация масштаба
+# t 165-240: Финал — лёгкое покачивание + 8 искр по орбите + пульс "ПОБЕДА!"
+# draw_set_transform(pos, rot, scale) для всех трансформаций в _draw()
+# _show_name_input() вызывается автоматически после WIN_SPIN_DUR кадров
 ```
 
 ### Туман войны
@@ -92,13 +111,25 @@ FOG_ALPHA   = 0.40 # максимальная непрозрачность
 fog_color = Color(0.05, 0.05, 0.10)  # тёмно-синий тон
 ```
 
-### Мобильные контролы
-```gdscript
-MB_DPAD_CX=90, MB_DPAD_CY=585  # центр d-pad (левый нижний угол)
-MB_BTN_STEP=62, MB_BTN_R=26    # шаг и радиус кнопок
-MB_BURROW_X=820, MB_BURROW_Y=585  # кнопка "нора" (правый нижний)
-# Показываются только если DisplayServer.is_touchscreen_available()
-# Для теста на десктопе: Project Settings → Input Devices → Emulate Touch From Mouse
+### Мобильные контролы (HTML-зона, не canvas)
+```
+CTRL_H = 0  # контролы убраны из canvas в HTML-зону ниже
+Viewport 900x742 — только игровой экран без зоны управления
+
+HTML-зона (230px, position:fixed;bottom:0):
+  - Заголовок "HAMSTER MAZE" — CSS stone/Flintstones стиль (Georgia, #d4a020, 3D-тени)
+  - D-pad: ▲▼◄► кнопки, dispatch WASD KeyboardEvent на canvas
+  - OK кнопка: dispatch Enter KeyboardEvent (навигация в меню)
+  - НОРА кнопка: dispatch Space KeyboardEvent
+  - Создаётся только на touch устройствах (ontouchstart in window)
+  - Canvas сжимается до innerHeight-230px через JS setProperty important
+
+_held_keys: Dictionary  # keycode→bool, обновляется в _input()
+# Input.is_key_pressed() НЕ работает с JS synthetic KeyboardEvent
+# Движение в _process() использует _held_keys.get(KEY_W/S/A/D, false)
+
+# Тест мобильных контролов на десктопе:
+# Project Settings → Input Devices → Pointing → Emulate Touch From Mouse ✓
 ```
 
 ### Supabase
@@ -127,34 +158,37 @@ func _ell(center, rx, ry, color, rot=0.0, seg=24)
 | 3 | Лама AI (синяя + красная) + game over | ✅ Готово |
 | 4 | Орехи + норы (Space) + порталы + экран победы | ✅ Готово |
 | 5 | Туман войны | ✅ Готово |
-| 6 | Сплэш экран + локальный рекорд + ввод имени | ✅ Готово (баг исправлен) |
-| 7 | Звук (.ogg/.wav/.mp3) + Supabase leaderboard + persistent scores | ✅ Готово |
-| 8 | Мобильные touch контролы | ✅ Готово (экспорт — вручную в Godot) |
-| 9 | Спрайты / анимации (визуальная переработка) | ❌ Запланировано |
+| 6 | Сплэш экран + локальный рекорд + ввод имени | ✅ Готово |
+| 7 | Звук + Supabase leaderboard + persistent scores | ✅ Готово |
+| 8 | Мобильные touch контролы (HTML-зона ниже canvas) | ✅ Готово |
+| 9A | Танец хомяка при победе (4 фазы + искры + ноты) | ✅ Готово |
+| 9B | Геймплей: уровни, бонус-предметы, ловушки | 🔜 Следующий приоритет |
+| 9C | Визуальная переработка (спрайты/частицы) | ❌ Запланировано |
 
 ---
 
 ## Known Issues / Риски
 
 ### 🟡 Средние риски
-- `_show_touch` = false на десктопе — мобильные контролы не видны без `Emulate Touch`.
-  Если нужно форсировать на Web: добавить `or OS.get_name() == "Web"` в `_ready()`.
+- `eat_nut.mp3` лицензия CC BY-NC 4.0 — не для коммерческого использования.
+  Для релиза заменить на CC0 звук (аналогично win_new.ogg взять с Kenney.nl).
 - Anon key Supabase хранится в открытом виде в main.gd — нормально для anon key,
   но если RLS не настроен — любой может писать/читать таблицу.
-- `eat_nut.mp3` лицензия CC BY-NC 4.0 — не для коммерческого использования.
-  Для релиза заменить на CC0 звук.
 - Persistent scores хранятся в `user://scores.cfg`. После переустановки — сбрасываются.
+- Кнопки меню (Музыка, Кредиты) на мобильном — добавлен grow(28) padding и OK кнопка
+  для навигации, но не тестировалось на реальном устройстве после этой сессии.
 
-### 🟢 Нормально работает (Etap 1-8)
+### 🟢 Нормально работает (Etap 1-9A)
 - Лабиринт генерируется корректно
-- Хомяк движется, WASD + held-key + touch d-pad
+- Хомяк движется: WASD + _held_keys (web-совместимо) + touch d-pad (HTML)
 - Лама AI (синяя + красная), все 4 состояния, скорость сбалансирована
 - Орехи, волны, норы (Space/tap), порталы
 - Туман войны с плавным градиентом
 - Splash, splash leaderboard (онлайн + локальный), ввод имени
 - Звуки всех событий + фоновая музыка (loop)
 - Supabase топ-10 (GET при старте, POST после победы)
-- Мобильный d-pad + кнопка нора (touch)
+- HTML мобильные контролы: d-pad + OK + НОРА, заголовок HAMSTER MAZE
+- Танец хомяка при победе: 4 фазы, искры, нотки ♪
 
 ---
 
@@ -169,10 +203,12 @@ func _ell(center, rx, ry, color, rot=0.0, seg=24)
 | CanvasLayer + LineEdit для ввода имени | Единственный способ сделать текстовый ввод поверх _draw() |
 | Fog per-cell (не шейдер) | Проще реализовать, достаточно хорошо выглядит |
 | ConfigFile для persistent scores | Стандартный Godot способ, path = user://scores.cfg |
-| HTTPRequest nodes для Supabase | Нативный Godot, без сторонних библиотек |
-| Touch контролы через `_input()` + `_draw()` | Нет лишних нод, чистый код |
-| `DisplayServer.is_touchscreen_available()` | Автодетект touch без проверки платформы |
+| JavaScriptBridge.eval() для Supabase на Web | HTTPRequest ненадёжен в браузере с кастомными хедерами |
+| HTML-зона для мобильных контролов | Canvas не знает о touch → dispatch KeyboardEvent в JS проще |
+| `_held_keys` dict в `_input()` | `Input.is_key_pressed()` не видит JS synthetic KeyboardEvent |
+| `draw_set_transform(pos, rot, scale)` | Единственный способ трансформировать в _draw() Godot 4 |
 | `int / int` в GDScript = int | Использовать `float()` или `/ 1000.0` для деления |
+| Kenney.nl для CC0 звуков | Freesound.org требует логин для скачивания, Kenney — нет |
 
 ---
 
@@ -235,7 +271,7 @@ git push
 - Скорость лам снижена (LSPEED_BASE patrol:52, alert:36, chase:28, search:34)
 - Etap 8: Мобильные touch контролы (d-pad + нора), автодетект, drag support
 
-**Commits этой сессии:**
+**Commits:**
 ```
 d19e1a6 Etap 8: mobile touch controls (d-pad + burrow button)
 3f69b4d Etap 7B: sound effects + background music
@@ -243,29 +279,105 @@ aae9696 Etap 7: Supabase online leaderboard + persistent local scores + llama sp
 140bb68 fix: Etap 6 — replace Array.get() with proper indexing, remove debug prints
 ```
 
+### Сессия 5 (2026-03-07)
+**Сделано:**
+- Web (HTML5) экспорт настроен и задеплоен на GitHub Pages
+  - Godot CLI headless export: `Godot --headless --export-release "Web"`
+  - Deploy: orphan `gh-pages` ветка, git worktree
+  - Live URL: https://andriidiabolus.github.io/Diabolus-repository-Godot4-hamster-maze/
+- Зона управления расширена: `CTRL_H` 240→360, viewport_height 982→1102
+- Кнопки d-pad и нора перенесены НИЖЕ игрового экрана
+- Надпись "HAMSTER MAZE" — Flintstones стиль, TTF шрифт flintstone.ttf
+- Исправлен баг: WASD не работали в web-билде (physical_keycode)
+- Исправлен баг: таблица рекордов — JavaScriptBridge.eval() + нативный JS fetch()
+
+**Commits:**
+```
+ba18499 feat: use Flintstone TTF font for HAMSTER MAZE title
+3c85e12 feat: Flintstones-style HAMSTER MAZE title with rocky font in controls zone
+9f13f4d fix: WASD physical_keycode for web + JavaScriptBridge fetch for leaderboard
+```
+
+---
+
+### Сессия 6 (2026-03-07)
+**Сделано:**
+
+**Архитектура мобильных контролов — полный переезд в HTML:**
+- Контролы полностью убраны из canvas Godot (`CTRL_H=0`, viewport_height=742)
+- HTML-зона 230px (`position:fixed;bottom:0`) в `export_presets.cfg` `html/head_include`
+- Создаётся JS-кодом только на touch устройствах (`ontouchstart in window`)
+- D-pad (▲▼◄►) + кнопка **OK** (Enter) + кнопка **НОРА** (Space) — dispatch KeyboardEvent
+- Заголовок "HAMSTER MAZE" в CSS: Georgia, `#d4a020`, 3D stone shadows, `font-size:30px`
+- Canvas сжимается до `innerHeight - 230px` через `setProperty('important')`
+
+**Фикс движения на web:**
+- `_held_keys: Dictionary` — обновляется в `_input()` для каждого KeyboardEvent
+- `_process()` использует `_held_keys.get(KEY_W/S/A/D, false)` вместо `Input.is_key_pressed()`
+- Причина: `Input.is_key_pressed()` читает hardware-state, не реагирует на JS-синтетические события
+
+**Фикс кнопок меню на мобильном:**
+- `_handle_menu_click()` использует `grow(28)` padding на hit rects при `_show_touch`
+- OK кнопка в HTML позволяет навигацию Enter в меню без касания экрана
+
+**Новый CC0 победный звук:**
+- `assets/sounds/win_new.ogg` — `jingles_PIZZI03.ogg` из Kenney music-jingles pack
+- Pizzicato (щипковые струны), бодрый ~1.5 сек, CC0
+- Kenney.nl не требует авторизации для прямого скачивания (в отличие от Freesound.org)
+
+**Танец хомяка при победе (заменяет spinning):**
+- `WIN_SPIN_DUR=240` (~4 сек), `_draw_win_anim()` полностью переписан
+- Фаза 1 (t 0-60): **Прыжки x3** — squish при приземлении (sc_x /= sq, sc_y *= sq)
+- Фаза 2 (t 60-120): **Раскачка** — sin rotation ±0.35 rad + боковое смещение + ноты ♪
+- Фаза 3 (t 120-165): **Спин** — полный TAU оборот + пульсация масштаба
+- Фаза 4 (t 165-240): **Финал** — покачивание + 8 искр по орбите + "ПОБЕДА!" пульсирует
+- `_show_name_input()` вызывается автоматически по истечении анимации
+
+**Commits:**
+```
+371d496 Etap 9: hamster dance animation (4 phases)
+2e8ff5c Etap 9: win animation (spinning hamster) + new CC0 win sound
+[+gh-pages deploys: 3e4fb36, 0d7efcc]
+```
+
 ---
 
 ## Next Steps (следующая сессия)
 
-### Etap 9 — Web (HTML5) экспорт
-1. В Godot: `Project → Export → Add → Web`
-2. Export Path: `export/web/index.html`
-3. Включить: `Export With Debug` = OFF для релиза
-4. Проверить что `res://assets/sounds/` включены в экспорт
-5. Загрузить на GitHub Pages или itch.io
+### 🔜 Приоритет 1 — Геймплей улучшения (обсуждено, одобрено)
+Выбор сделан в конце сессии 6. Варианты:
 
-### Etap 9 — Android экспорт (опционально)
-1. Нужен Android SDK + JDK (Godot покажет где скачать)
-2. `Project → Export → Add → Android`
-3. Подписать APK (debug keystore для теста)
+**A. Уровни** — после победы лабиринт перегенерируется, множитель сложности растёт:
+- `_level: int` счётчик, отображается в HUD
+- Лама быстрее: `LSPEED_BASE * (1 - level * 0.05)`, минимум 12 фреймов/шаг
+- Больше орехов нужно: `NUT_FIRST_WAVE_PCT` растёт
+- Экран "Level N!" между уровнями с новой анимацией
 
-### Etap 9 — Визуальная переработка (спрайты/анимации)
-- Заменить draw-примитивы на SpritesheetTexture или AnimatedSprite2D
-- Или улучшить существующий _draw() рендер (шерсть, тени, детали)
-- Решение принять в начале сессии
+**B. Бонус-предметы** — появляются редко на карте (тип `{x,y,type,visible}`):
+- 🛡️ `shield` — хомяк неуязвим 5 сек (лама не ловит), синяя аура вокруг
+- ⚡ `speed` — движение каждые 4 фрейма вместо 8 на 4 сек
+- ❄️ `freeze` — `_llama.frozen_until_ms` — лама стоит 4 сек
+- Появление: редкие клетки-проходы при спавне уровня (~3-4 штуки)
 
-### Технические улучшения (по желанию)
-- `_show_touch` на Web: добавить `or OS.get_name() == "Web"` (видеть контролы всегда)
-- Заменить `eat_nut.mp3` (CC BY-NC) на CC0 звук для коммерческого релиза
+**C. Частицы при сборе ореха** — 6-8 кружков разлетаются и тают (~легко):
+- `_particles: Array[{x,y,vx,vy,life,color}]`, обновляются в `_process()`
+
+### 🔧 Технические улучшения (по желанию)
+- Заменить `eat_nut.mp3` (CC BY-NC) на CC0 с Kenney.nl
 - RLS политики в Supabase (сейчас таблица открыта всем)
 - Кнопка "Музыка ON/OFF" в HUD или на сплэш
+- Android экспорт: нужен Android SDK + JDK, `Project → Export → Add → Android`
+
+### 🌐 Deploy
+```bash
+# Headless export:
+"/Users/andriidiablo/Desktop/Godot.app/Contents/MacOS/Godot" \
+  --headless --path "/Users/andriidiablo/Documents/Test 3.1" \
+  --export-release "Web" "/Users/andriidiablo/Documents/Test 3.1/export/web/index.html"
+
+# Deploy gh-pages:
+git worktree add /tmp/gh-pages-deploy gh-pages
+cp export/web/index.html export/web/index.pck /tmp/gh-pages-deploy/
+cd /tmp/gh-pages-deploy && git add -A && git commit -m "Deploy: ..." && git push origin gh-pages
+git worktree remove /tmp/gh-pages-deploy
+```
