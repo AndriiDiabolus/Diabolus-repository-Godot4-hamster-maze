@@ -27,6 +27,7 @@ const MB_BURROW_Y: float = 980.0
 # menu → (splash | play) → (lost | won_name) → (won) → menu
 var _state: String = "menu"
 var _music_on: bool = true
+var _menu_selected: int = 0             # 0=play, 1=music, 2=credits
 var _menu_btn_rects: Dictionary = {}   # "play","music","credits","back" → Rect2
 var _game_start_ms: int = 0
 var _game_time_ms: int = 0
@@ -367,6 +368,11 @@ func _input(event: InputEvent) -> void:
 		_handle_screen_input(event)
 		return
 
+	# Mouse click (desktop)
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_handle_menu_click(event.position)
+		return
+
 	if not event is InputEventKey or not event.pressed or event.echo:
 		return
 
@@ -374,19 +380,30 @@ func _input(event: InputEvent) -> void:
 	if _state == "won_name":
 		return
 
-	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		_handle_menu_click(event.position)
+	var kc: int = event.physical_keycode if event.physical_keycode != KEY_NONE else event.keycode
+
+	# ── Menu keyboard navigation ──────────────────────────────────────
+	if _state == "menu":
+		match kc:
+			KEY_W, KEY_UP:
+				_menu_selected = (_menu_selected - 1 + 3) % 3
+				queue_redraw()
+			KEY_S, KEY_DOWN:
+				_menu_selected = (_menu_selected + 1) % 3
+				queue_redraw()
+			KEY_ENTER, KEY_KP_ENTER:
+				_activate_menu_selection()
 		return
 
-	if event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
+	if _state == "credits":
+		_state = "menu"
+		queue_redraw()
+		return
+
+	if kc == KEY_ENTER or kc == KEY_KP_ENTER:
 		match _state:
-			"menu":
-				_start_game()
 			"splash":
 				_start_game()
-			"credits":
-				_state = "menu"
-				queue_redraw()
 			"lost", "won":
 				_state = "menu"
 				_fetch_online_scores()
@@ -397,7 +414,6 @@ func _input(event: InputEvent) -> void:
 		return
 
 	# physical_keycode works reliably in web builds for letter keys (WASD)
-	var kc: int = event.physical_keycode if event.physical_keycode != KEY_NONE else event.keycode
 	match kc:
 		KEY_SPACE:
 			_do_burrow()
@@ -500,20 +516,33 @@ func _mb_action_at(pos: Vector2) -> String:
 func _handle_menu_click(pos: Vector2) -> void:
 	if _state == "menu":
 		if _menu_btn_rects.has("play") and _menu_btn_rects["play"].has_point(pos):
-			_start_game()
+			_menu_selected = 0
+			_activate_menu_selection()
 		elif _menu_btn_rects.has("music") and _menu_btn_rects["music"].has_point(pos):
+			_menu_selected = 1
+			_activate_menu_selection()
+		elif _menu_btn_rects.has("credits") and _menu_btn_rects["credits"].has_point(pos):
+			_menu_selected = 2
+			_activate_menu_selection()
+	elif _state == "credits":
+		if _menu_btn_rects.has("back") and _menu_btn_rects["back"].has_point(pos):
+			_state = "menu"
+			queue_redraw()
+
+
+func _activate_menu_selection() -> void:
+	match _menu_selected:
+		0:  # play
+			_start_game()
+		1:  # music
 			_music_on = not _music_on
 			if _music_on:
 				_snd_music.play()
 			else:
 				_snd_music.stop()
 			queue_redraw()
-		elif _menu_btn_rects.has("credits") and _menu_btn_rects["credits"].has_point(pos):
+		2:  # credits
 			_state = "credits"
-			queue_redraw()
-	elif _state == "credits":
-		if _menu_btn_rects.has("back") and _menu_btn_rects["back"].has_point(pos):
-			_state = "menu"
 			queue_redraw()
 
 
@@ -759,22 +788,39 @@ func _draw_menu() -> void:
 	var bx: float = cx - bw * 0.5
 	var pulse: float = 1.0 + 0.03 * sin(_frame * 0.05)
 
+	# Helper: draw selection cursor (triangle) to the left of selected button
+	var sel_ys: Array = [348.0, 427.0, 506.0]
+	var sel_y: float = sel_ys[_menu_selected] + bh * 0.5
+	var sel_x: float = bx - 28.0
+	var tri: PackedVector2Array = PackedVector2Array([
+		Vector2(sel_x, sel_y - 10),
+		Vector2(sel_x + 16, sel_y),
+		Vector2(sel_x, sel_y + 10),
+	])
+	draw_colored_polygon(tri, Color("#ffd700"))
+
 	# PLAY
 	var py: float = 348.0
-	var pw: float = bw * pulse
+	var pw: float = bw * (pulse if _menu_selected == 0 else 1.0)
 	_menu_btn_rects["play"] = Rect2(bx, py, bw, bh)
-	draw_rect(Rect2(cx - pw * 0.5, py, pw, bh), Color("#0d2040"))
-	draw_rect(Rect2(cx - pw * 0.5, py, pw, bh), Color("#ffd700", 0.85), false, 2.5)
+	var play_sel: bool = _menu_selected == 0
+	draw_rect(Rect2(cx - pw * 0.5, py, pw, bh), Color("#0d2040") if not play_sel else Color("#1a3860"))
+	draw_rect(Rect2(cx - pw * 0.5, py, pw, bh),
+		Color("#ffd700", 1.0) if play_sel else Color("#ffd700", 0.6), false, 2.5 if play_sel else 1.5)
 	draw_string(font, Vector2(cx - 68, py + 36), "▶   ИГРАТЬ",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 26, Color("#ffd700"))
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 26, Color("#ffd700") if play_sel else Color("#ffd700", 0.75))
 
 	# MUSIC
 	var my: float = 427.0
 	_menu_btn_rects["music"] = Rect2(bx, my, bw, bh)
+	var music_sel: bool = _menu_selected == 1
 	var mbg: Color = Color("#0a1e3a") if _music_on else Color("#1a0808")
-	var mbr: Color = Color(0.35, 0.7, 1.0, 0.7) if _music_on else Color(0.5, 0.2, 0.2, 0.65)
+	if music_sel:
+		mbg = mbg.lightened(0.12)
+	var mbr: Color = Color(0.35, 0.7, 1.0, 1.0 if music_sel else 0.7) if _music_on \
+		else Color(0.5, 0.2, 0.2, 1.0 if music_sel else 0.65)
 	draw_rect(Rect2(bx, my, bw, bh), mbg)
-	draw_rect(Rect2(bx, my, bw, bh), mbr, false, 2.0)
+	draw_rect(Rect2(bx, my, bw, bh), mbr, false, 2.5 if music_sel else 1.5)
 	var mlabel: String = "♪   МУЗЫКА   ON" if _music_on else "♪   МУЗЫКА   OFF"
 	var mcol: Color = Color(0.4, 0.8, 1.0) if _music_on else Color(0.65, 0.3, 0.3)
 	draw_string(font, Vector2(cx - 90, my + 36), mlabel,
@@ -783,10 +829,13 @@ func _draw_menu() -> void:
 	# CREDITS
 	var cy2: float = 506.0
 	_menu_btn_rects["credits"] = Rect2(bx, cy2, bw, bh)
-	draw_rect(Rect2(bx, cy2, bw, bh), Color(0.05, 0.07, 0.16))
-	draw_rect(Rect2(bx, cy2, bw, bh), Color(0.45, 0.5, 0.72, 0.5), false, 1.5)
+	var cred_sel: bool = _menu_selected == 2
+	draw_rect(Rect2(bx, cy2, bw, bh), Color(0.05, 0.07, 0.16) if not cred_sel else Color(0.1, 0.12, 0.28))
+	draw_rect(Rect2(bx, cy2, bw, bh),
+		Color(0.65, 0.7, 1.0, 1.0) if cred_sel else Color(0.45, 0.5, 0.72, 0.5), false, 2.5 if cred_sel else 1.5)
 	draw_string(font, Vector2(cx - 55, cy2 + 36), "CREDITS",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color(0.62, 0.68, 0.88, 0.85))
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 24,
+		Color(0.8, 0.85, 1.0) if cred_sel else Color(0.62, 0.68, 0.88, 0.85))
 
 	# Online leaderboard (compact, bottom of game area)
 	if not _online_scores.is_empty():
@@ -814,9 +863,20 @@ func _draw_credits() -> void:
 	var cx: float = C.W * 0.5
 	draw_rect(Rect2(0, 0, C.W, C.H + C.HUD + C.CTRL_H), Color("#050510"))
 
-	draw_string(font, Vector2(cx - 60, 55), "CREDITS",
+	draw_string(font, Vector2(cx - 60, 52), "CREDITS",
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 34, Color("#ffd700"))
-	draw_rect(Rect2(40, 78, C.W - 80, 1), Color("#1a3060"))
+	draw_rect(Rect2(40, 75, C.W - 80, 1), Color("#1a3060"))
+
+	# ── Dedication ─────────────────────────────────────────────────────
+	var heart_pulse: float = 0.85 + 0.15 * sin(_frame * 0.06)
+	var heart_col: Color = Color(1.0, 0.25, 0.35, heart_pulse)
+	draw_string(font, Vector2(cx - 10, 105), "♥",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 28, heart_col)
+	draw_string(font, Vector2(40, 136), "Andrew & Lucy",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color(1.0, 0.82, 0.88, 0.95))
+	draw_string(font, Vector2(40, 160), "in memory of Beloved Moty...",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 17, Color(0.85, 0.72, 0.78, 0.8))
+	draw_rect(Rect2(40, 178, C.W - 80, 1), Color("#1a3060", 0.6))
 
 	var rows: Array = [
 		["Игра",         "Хомяк в Лабиринте"],
@@ -835,28 +895,30 @@ func _draw_credits() -> void:
 		["— Шрифт —",    ""],
 		["flintstone.ttf",   "wfonts.com (Free)"],
 	]
-	var y: float = 104.0
+	var y: float = 194.0
 	for row in rows:
 		if row[0] == "" and row[1] == "":
-			y += 10.0
+			y += 8.0
 			continue
 		if row[1] == "":
 			draw_string(font, Vector2(40, y), row[0],
-				HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#ffd700", 0.85))
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("#ffd700", 0.85))
 		else:
 			draw_string(font, Vector2(40, y), row[0] + ":",
-				HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, 0.45))
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1, 1, 1, 0.4))
 			draw_string(font, Vector2(210, y), row[1],
-				HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.7, 0.85, 1.0, 0.9))
-		y += 22.0
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.7, 0.85, 1.0, 0.85))
+		y += 20.0
 
 	# Back button
-	var br := Rect2(cx - 130, 638, 260, 46)
+	var br := Rect2(cx - 130, 645, 260, 46)
 	_menu_btn_rects["back"] = br
 	draw_rect(br, Color("#0d1e38"))
 	draw_rect(br, Color(0.45, 0.5, 0.8, 0.65), false, 2.0)
-	draw_string(font, Vector2(cx - 70, 670), "←  НАЗАД",
+	draw_string(font, Vector2(cx - 70, 677), "←  НАЗАД",
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(0.65, 0.72, 1.0))
+	draw_string(font, Vector2(cx - 110, 708), "Любая клавиша — назад",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(1, 1, 1, 0.2))
 
 
 # ── Splash screen ─────────────────────────────────────────────────────
