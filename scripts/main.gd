@@ -1136,6 +1136,9 @@ func _draw_mobile_controls() -> void:
 	draw_rect(Rect2(0, zone_y, C.W, C.CTRL_H), Color("#0a1535"))
 	draw_rect(Rect2(0, zone_y, C.W, 2), Color("#1a3060"))  # top border line
 
+	# Flintstones-style title — always visible
+	_draw_ctrl_title()
+
 	if _state != "play":
 		# "Tap" at bottom of zone with dark pill for readability
 		var tap_y := zone_y + float(C.CTRL_H) - 22.0
