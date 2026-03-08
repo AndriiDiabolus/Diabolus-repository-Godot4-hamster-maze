@@ -10,7 +10,8 @@ const FOG_ALPHA:   float = 0.40  # max fog darkness
 
 # ── Movement timer ────────────────────────────────────────────────────
 const MOVE_INTERVAL: float = 8.0 / 60.0
-const WIN_SPIN_DUR: int = 240  # кадров (~4 сек) — танец хомяка
+const WIN_SPIN_DUR: int = 240    # кадров (~4 сек) — танец хомяка
+const MENU_INTRO_DUR: int = 285  # кадров — вступительная анимация меню
 var _move_timer: float = 0.0
 var _frame: int = 0
 
@@ -34,6 +35,9 @@ var _menu_btn_rects: Dictionary = {}   # "play","music","credits","back" → Rec
 var _game_start_ms: int = 0
 var _game_time_ms: int = 0
 var _win_anim_t: int = 0
+var _menu_anim_t: int = 0    # счётчик анимации меню
+var _menu_dust: Array = []    # [{x,y,r,life,max_life}]
+var _prev_state: String = "" # для сброса анимации при входе в меню
 
 # ── Maze ──────────────────────────────────────────────────────────────
 var _maze: Array = []
@@ -559,6 +563,21 @@ func _activate_menu_selection() -> void:
 func _process(delta: float) -> void:
 	_frame += 1
 
+	# Сброс анимации при входе в меню
+	if _state != _prev_state:
+		if _state == "menu":
+			_menu_anim_t = 0
+			_menu_dust.clear()
+		_prev_state = _state
+
+	if _state == "menu":
+		_menu_anim_t += 1
+		for i in range(_menu_dust.size() - 1, -1, -1):
+			_menu_dust[i].life -= 1
+			if _menu_dust[i].life <= 0:
+				_menu_dust.remove_at(i)
+		_menu_add_dust()
+
 	if _state in ["menu", "credits", "splash"]:
 		queue_redraw()
 		return
@@ -861,6 +880,8 @@ func _draw_menu() -> void:
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 24,
 		Color(0.8, 0.85, 1.0) if cred_sel else Color(0.62, 0.68, 0.88, 0.85))
 
+	_draw_menu_anim()
+
 	# Online leaderboard (compact, bottom of game area)
 	if not _online_scores.is_empty():
 		var lby: float = 590.0
@@ -879,6 +900,180 @@ func _draw_menu() -> void:
 	elif _fetching:
 		draw_string(font, Vector2(cx - 40, 600), "Загрузка...",
 			HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, 0.25))
+
+
+# ── Menu animation: dust spawner ──────────────────────────────────────
+func _menu_add_dust() -> void:
+	if _frame % 3 != 0:
+		return
+	var t := _menu_anim_t
+	if t >= 95 and t < 140:
+		# Хомяк убегает вправо
+		var hx: float = 450.0 + float(t - 95) * 9.5
+		_menu_dust.append({x=hx - 16.0, y=680.0, r=5.0 + randf() * 3.0, life=16, max_life=16})
+	elif t >= 242 and t < 286:
+		# Лама убегает влево
+		var lx: float = 450.0 - float(t - 242) * 10.5
+		_menu_dust.append({x=lx + 16.0, y=676.0, r=5.0 + randf() * 3.0, life=16, max_life=16})
+	elif t >= MENU_INTRO_DUR:
+		var lt: int = t - MENU_INTRO_DUR
+		# Большая дорожка: лево→право
+		var p1: int = 320
+		var t1: int = lt % p1
+		if t1 > 0 and t1 < p1 - 5:
+			var hx1: float = -60.0 + float(t1) / float(p1) * float(C.W + 120)
+			_menu_dust.append({x=hx1 - 18.0, y=679.0, r=7.0 + randf() * 3.0, life=18, max_life=18})
+		# Малая дорожка: право→лево
+		var p2: int = 250
+		var t2: int = lt % p2
+		if t2 > 0 and t2 < p2 - 5:
+			var hx2: float = float(C.W) + 60.0 - float(t2) / float(p2) * float(C.W + 120.0)
+			_menu_dust.append({x=hx2 + 12.0, y=695.0, r=4.0 + randf() * 2.0, life=14, max_life=14})
+
+
+# ── Menu animation: main dispatcher ───────────────────────────────────
+func _draw_menu_anim() -> void:
+	# Пыль (рисуется первой — позади персонажей)
+	for d in _menu_dust:
+		var a: float = float(d.life) / float(d.max_life) * 0.40
+		draw_circle(Vector2(d.x, d.y), d.r, Color(0.72, 0.68, 0.52, a))
+		draw_circle(Vector2(d.x, d.y), d.r * 0.55, Color(0.82, 0.78, 0.62, a * 0.6))
+
+	var t := _menu_anim_t
+	if t < MENU_INTRO_DUR:
+		_draw_menu_intro_anim(t)
+	else:
+		_draw_menu_chase(t - MENU_INTRO_DUR)
+
+
+# ── Menu animation: intro (однократная, ~285 кадров) ──────────────────
+func _draw_menu_intro_anim(t: int) -> void:
+	var cx: float = 450.0
+	var cy: float = 678.0
+	var font := ThemeDB.fallback_font
+
+	# ── Хомяк (t = 0..139) ──────────────────────────────────────────
+	if t < 140:
+		var hx: float = cx
+		var hy: float = cy
+		var sc: float = 1.0
+		var flip: float = 1.0  # 1 = лицом влево (default), -1 = лицом вправо
+
+		if t < 22:
+			# Появление: выезжает снизу
+			hy = cy + 35.0 * (1.0 - float(t) / 22.0)
+		elif t < 45:
+			# Смотрит влево (по умолчанию)
+			hy = cy + sin(float(t) * 0.35) * 2.5
+		elif t < 68:
+			# Смотрит вправо
+			flip = -1.0
+			hy = cy + sin(float(t) * 0.35) * 2.5
+		elif t < 80:
+			# Заметил что-то — быстрый bob, смотрит вправо
+			flip = -1.0
+			hy = cy + sin(float(t) * 0.9) * 4.0
+		elif t < 95:
+			# Прыжок от испуга
+			var jt: float = float(t - 80) / 15.0
+			hy = cy - sin(jt * PI) * 32.0
+			sc = 1.0 + sin(jt * PI) * 0.14
+			flip = -1.0
+		else:
+			# Убегает вправо
+			var rt: float = float(t - 95)
+			hx = cx + rt * 9.5
+			flip = -1.0
+			hy = cy + sin(rt * 0.75) * 5.0
+			sc = 0.95 + sin(rt * 0.75 + 0.5) * 0.08
+
+		if hx > -60.0 and hx < C.W + 60.0:
+			draw_set_transform(Vector2(hx, hy), 0.0, Vector2(flip * sc, sc))
+			_draw_hamster(0, 0, false)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+		# "!" при испуге
+		if t >= 80 and t < 95:
+			var excl_a: float = 1.0 - float(t - 80) / 15.0
+			draw_string(font, Vector2(hx + 18, hy - 42), "!",
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 26, Color(1.0, 0.95, 0.2, excl_a))
+
+	# ── Лама (t = 162..284) ─────────────────────────────────────────
+	if t >= 162:
+		var lt: float = float(t - 162)
+		var lx: float = cx
+		var ly: float = cy - 6.0
+		var lsc: float = 1.0
+		var lflip: float = 1.0  # лицом влево (идёт влево)
+		var is_red: bool = false
+
+		if t < 208:
+			# Входит справа
+			var frac: float = lt / 46.0
+			lx = C.W + 65.0 - frac * (C.W + 65.0 - cx)
+			lflip = 1.0
+			ly = cy - 6.0 + sin(lt * 0.5) * 3.5
+		elif t < 224:
+			# Осматривается
+			var at: float = float(t - 208)
+			lflip = 1.0 if at < 8.0 else -1.0
+			ly = cy - 6.0 + sin(at * 0.45) * 2.5
+		elif t < 242:
+			# Прыжок + краснеет
+			var jt2: float = float(t - 224) / 18.0
+			ly = cy - 6.0 - sin(jt2 * PI) * 30.0
+			lsc = 1.0 + sin(jt2 * PI) * 0.13
+			is_red = t >= 232
+			lflip = -1.0  # смотрит вправо (куда убежал хомяк)
+		else:
+			# Мчится влево в погоню
+			var rt2: float = float(t - 242)
+			lx = cx - rt2 * 10.5
+			lflip = 1.0
+			ly = cy - 6.0 + sin(rt2 * 0.7) * 4.5
+			is_red = true
+
+		if lx > -80.0 and lx < C.W + 80.0:
+			draw_set_transform(Vector2(lx, ly), 0.0, Vector2(lflip * lsc, lsc))
+			_draw_llama(0, 0, "patrol", is_red)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+		# "!!" когда лама видит следы хомяка
+		if t >= 224 and t < 242:
+			var excl_a2: float = 1.0 - float(t - 224) / 18.0
+			draw_string(font, Vector2(lx + 20, ly - 58), "!!",
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color(1.0, 0.3, 0.3, excl_a2))
+
+
+# ── Menu animation: looping chase ─────────────────────────────────────
+func _draw_menu_chase(lt: int) -> void:
+	# Малая дорожка (фон): право→лево, синяя лама
+	var p2: int = 250
+	var t2: int = lt % p2
+	var hx2: float = float(C.W) + 60.0 - float(t2) / float(p2) * float(C.W + 120.0)
+	var cy2: float = 695.0
+	var sc2: float = 0.65
+
+	draw_set_transform(Vector2(hx2 + 52.0, cy2 - 4.0), 0.0, Vector2(sc2, sc2))
+	_draw_llama(0, 0, "chase", false)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	draw_set_transform(Vector2(hx2, cy2), 0.0, Vector2(sc2, sc2))
+	_draw_hamster(0, 0, false)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+	# Большая дорожка (передний план): лево→право, красная лама
+	var p1: int = 320
+	var t1: int = lt % p1
+	var hx1: float = -60.0 + float(t1) / float(p1) * float(C.W + 120.0)
+	var cy1: float = 674.0
+	var sc1: float = 1.3
+
+	draw_set_transform(Vector2(hx1 - 82.0, cy1 - 5.0), 0.0, Vector2(-sc1, sc1))
+	_draw_llama(0, 0, "chase", true)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	draw_set_transform(Vector2(hx1, cy1), 0.0, Vector2(-sc1, sc1))
+	_draw_hamster(0, 0, false)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 # ── Credits screen ─────────────────────────────────────────────────────
