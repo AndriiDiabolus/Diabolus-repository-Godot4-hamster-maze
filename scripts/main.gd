@@ -908,27 +908,27 @@ func _menu_add_dust() -> void:
 		return
 	var t := _menu_anim_t
 	if t >= 95 and t < 140:
-		# Хомяк убегает вправо
+		# Хомяк убегает вправо (sc=3.5, cy=694, ноги на 694+42=736)
 		var hx: float = 450.0 + float(t - 95) * 9.5
-		_menu_dust.append({x=hx - 16.0, y=680.0, r=5.0 + randf() * 3.0, life=16, max_life=16})
+		_menu_dust.append({x=hx - 40.0, y=735.0, r=9.0 + randf() * 5.0, life=18, max_life=18})
 	elif t >= 242 and t < 286:
-		# Лама убегает влево
+		# Лама убегает влево (sc=3.0, cy=700, ноги на 700+48=748)
 		var lx: float = 450.0 - float(t - 242) * 10.5
-		_menu_dust.append({x=lx + 16.0, y=676.0, r=5.0 + randf() * 3.0, life=16, max_life=16})
+		_menu_dust.append({x=lx + 40.0, y=740.0, r=9.0 + randf() * 5.0, life=18, max_life=18})
 	elif t >= MENU_INTRO_DUR:
 		var lt: int = t - MENU_INTRO_DUR
-		# Большая дорожка: лево→право
-		var p1: int = 320
+		# Большая дорожка: лево→право (sc=3.0, cy=706, ноги на 706+36=742)
+		var p1: int = 340
 		var t1: int = lt % p1
 		if t1 > 0 and t1 < p1 - 5:
-			var hx1: float = -60.0 + float(t1) / float(p1) * float(C.W + 120)
-			_menu_dust.append({x=hx1 - 18.0, y=679.0, r=7.0 + randf() * 3.0, life=18, max_life=18})
-		# Малая дорожка: право→лево
-		var p2: int = 250
+			var hx1: float = -80.0 + float(t1) / float(p1) * float(C.W + 160)
+			_menu_dust.append({x=hx1 - 45.0, y=740.0, r=10.0 + randf() * 5.0, life=20, max_life=20})
+		# Малая дорожка: право→лево (sc=1.7, cy=672, ноги на 672+20=692)
+		var p2: int = 260
 		var t2: int = lt % p2
 		if t2 > 0 and t2 < p2 - 5:
-			var hx2: float = float(C.W) + 60.0 - float(t2) / float(p2) * float(C.W + 120.0)
-			_menu_dust.append({x=hx2 + 12.0, y=695.0, r=4.0 + randf() * 2.0, life=14, max_life=14})
+			var hx2: float = float(C.W) + 80.0 - float(t2) / float(p2) * float(C.W + 160.0)
+			_menu_dust.append({x=hx2 + 30.0, y=690.0, r=5.0 + randf() * 3.0, life=14, max_life=14})
 
 
 # ── Menu animation: main dispatcher ───────────────────────────────────
@@ -949,45 +949,47 @@ func _draw_menu_anim() -> void:
 # ── Menu animation: intro (однократная, ~285 кадров) ──────────────────
 func _draw_menu_intro_anim(t: int) -> void:
 	var cx: float = 450.0
-	var cy: float = 678.0
+	var cy: float = 694.0   # центр хомяка (ноги на ~736, уши на ~636)
 	var font := ThemeDB.fallback_font
+	const HSC: float = 3.5  # масштаб хомяка в интро
+	const LSC: float = 3.0  # масштаб ламы в интро
 
 	# ── Хомяк (t = 0..139) ──────────────────────────────────────────
 	if t < 140:
 		var hx: float = cx
 		var hy: float = cy
-		var sc: float = 1.0
+		var sc: float = HSC
 		var flip: float = 1.0  # 1 = лицом влево (default), -1 = лицом вправо
 
 		if t < 22:
 			# Появление: выезжает снизу
-			hy = cy + 35.0 * (1.0 - float(t) / 22.0)
+			hy = cy + 80.0 * (1.0 - float(t) / 22.0)
 		elif t < 45:
 			# Смотрит влево (по умолчанию)
-			hy = cy + sin(float(t) * 0.35) * 2.5
+			hy = cy + sin(float(t) * 0.35) * 8.0
 		elif t < 68:
 			# Смотрит вправо
 			flip = -1.0
-			hy = cy + sin(float(t) * 0.35) * 2.5
+			hy = cy + sin(float(t) * 0.35) * 8.0
 		elif t < 80:
 			# Заметил что-то — быстрый bob, смотрит вправо
 			flip = -1.0
-			hy = cy + sin(float(t) * 0.9) * 4.0
+			hy = cy + sin(float(t) * 0.9) * 12.0
 		elif t < 95:
 			# Прыжок от испуга
 			var jt: float = float(t - 80) / 15.0
-			hy = cy - sin(jt * PI) * 32.0
-			sc = 1.0 + sin(jt * PI) * 0.14
+			hy = cy - sin(jt * PI) * 110.0
+			sc = HSC * (1.0 + sin(jt * PI) * 0.14)
 			flip = -1.0
 		else:
 			# Убегает вправо
 			var rt: float = float(t - 95)
 			hx = cx + rt * 9.5
 			flip = -1.0
-			hy = cy + sin(rt * 0.75) * 5.0
-			sc = 0.95 + sin(rt * 0.75 + 0.5) * 0.08
+			hy = cy + sin(rt * 0.75) * 18.0
+			sc = HSC * (0.95 + sin(rt * 0.75 + 0.5) * 0.08)
 
-		if hx > -60.0 and hx < C.W + 60.0:
+		if hx > -120.0 and hx < C.W + 120.0:
 			draw_set_transform(Vector2(hx, hy), 0.0, Vector2(flip * sc, sc))
 			_draw_hamster(0, 0, false)
 			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
@@ -995,15 +997,15 @@ func _draw_menu_intro_anim(t: int) -> void:
 		# "!" при испуге
 		if t >= 80 and t < 95:
 			var excl_a: float = 1.0 - float(t - 80) / 15.0
-			draw_string(font, Vector2(hx + 18, hy - 42), "!",
-				HORIZONTAL_ALIGNMENT_LEFT, -1, 26, Color(1.0, 0.95, 0.2, excl_a))
+			draw_string(font, Vector2(hx + 65, hy - 150), "!",
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 48, Color(1.0, 0.95, 0.2, excl_a))
 
 	# ── Лама (t = 162..284) ─────────────────────────────────────────
 	if t >= 162:
 		var lt: float = float(t - 162)
 		var lx: float = cx
-		var ly: float = cy - 6.0
-		var lsc: float = 1.0
+		var ly: float = cy + 6.0   # лама чуть ниже (выше хомяка)
+		var lsc: float = LSC
 		var lflip: float = 1.0  # лицом влево (идёт влево)
 		var is_red: bool = false
 
@@ -1012,17 +1014,17 @@ func _draw_menu_intro_anim(t: int) -> void:
 			var frac: float = lt / 46.0
 			lx = C.W + 65.0 - frac * (C.W + 65.0 - cx)
 			lflip = 1.0
-			ly = cy - 6.0 + sin(lt * 0.5) * 3.5
+			ly = cy + 6.0 + sin(lt * 0.5) * 12.0
 		elif t < 224:
 			# Осматривается
 			var at: float = float(t - 208)
 			lflip = 1.0 if at < 8.0 else -1.0
-			ly = cy - 6.0 + sin(at * 0.45) * 2.5
+			ly = cy + 6.0 + sin(at * 0.45) * 8.0
 		elif t < 242:
 			# Прыжок + краснеет
 			var jt2: float = float(t - 224) / 18.0
-			ly = cy - 6.0 - sin(jt2 * PI) * 30.0
-			lsc = 1.0 + sin(jt2 * PI) * 0.13
+			ly = cy + 6.0 - sin(jt2 * PI) * 95.0
+			lsc = LSC * (1.0 + sin(jt2 * PI) * 0.13)
 			is_red = t >= 232
 			lflip = -1.0  # смотрит вправо (куда убежал хомяк)
 		else:
@@ -1030,10 +1032,10 @@ func _draw_menu_intro_anim(t: int) -> void:
 			var rt2: float = float(t - 242)
 			lx = cx - rt2 * 10.5
 			lflip = 1.0
-			ly = cy - 6.0 + sin(rt2 * 0.7) * 4.5
+			ly = cy + 6.0 + sin(rt2 * 0.7) * 15.0
 			is_red = true
 
-		if lx > -80.0 and lx < C.W + 80.0:
+		if lx > -120.0 and lx < C.W + 120.0:
 			draw_set_transform(Vector2(lx, ly), 0.0, Vector2(lflip * lsc, lsc))
 			_draw_llama(0, 0, "patrol", is_red)
 			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
@@ -1041,37 +1043,39 @@ func _draw_menu_intro_anim(t: int) -> void:
 		# "!!" когда лама видит следы хомяка
 		if t >= 224 and t < 242:
 			var excl_a2: float = 1.0 - float(t - 224) / 18.0
-			draw_string(font, Vector2(lx + 20, ly - 58), "!!",
-				HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color(1.0, 0.3, 0.3, excl_a2))
+			draw_string(font, Vector2(lx + 70, ly - 175), "!!",
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 44, Color(1.0, 0.3, 0.3, excl_a2))
 
 
 # ── Menu animation: looping chase ─────────────────────────────────────
 func _draw_menu_chase(lt: int) -> void:
-	# Малая дорожка (фон): право→лево, синяя лама
-	var p2: int = 250
+	# Малая дорожка (дальше, выше): право→лево, синяя лама, sc=1.7
+	var p2: int = 260
 	var t2: int = lt % p2
-	var hx2: float = float(C.W) + 60.0 - float(t2) / float(p2) * float(C.W + 120.0)
-	var cy2: float = 695.0
-	var sc2: float = 0.65
+	var hx2: float = float(C.W) + 80.0 - float(t2) / float(p2) * float(C.W + 160.0)
+	var cy2: float = 672.0
+	var sc2: float = 1.7
+	var bob2: float = sin(float(lt) * 0.18) * 6.0
 
-	draw_set_transform(Vector2(hx2 + 52.0, cy2 - 4.0), 0.0, Vector2(sc2, sc2))
+	draw_set_transform(Vector2(hx2 + 55.0, cy2 + bob2), 0.0, Vector2(sc2, sc2))
 	_draw_llama(0, 0, "chase", false)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	draw_set_transform(Vector2(hx2, cy2), 0.0, Vector2(sc2, sc2))
+	draw_set_transform(Vector2(hx2, cy2 + bob2), 0.0, Vector2(sc2, sc2))
 	_draw_hamster(0, 0, false)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
-	# Большая дорожка (передний план): лево→право, красная лама
-	var p1: int = 320
+	# Большая дорожка (ближе, ниже): лево→право, красная лама, sc=3.0
+	var p1: int = 340
 	var t1: int = lt % p1
-	var hx1: float = -60.0 + float(t1) / float(p1) * float(C.W + 120.0)
-	var cy1: float = 674.0
-	var sc1: float = 1.3
+	var hx1: float = -80.0 + float(t1) / float(p1) * float(C.W + 160.0)
+	var cy1: float = 706.0
+	var sc1: float = 3.0
+	var bob1: float = sin(float(lt) * 0.22) * 14.0
 
-	draw_set_transform(Vector2(hx1 - 82.0, cy1 - 5.0), 0.0, Vector2(-sc1, sc1))
+	draw_set_transform(Vector2(hx1 - 100.0, cy1 - 8.0 + bob1), 0.0, Vector2(-sc1, sc1))
 	_draw_llama(0, 0, "chase", true)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	draw_set_transform(Vector2(hx1, cy1), 0.0, Vector2(-sc1, sc1))
+	draw_set_transform(Vector2(hx1, cy1 + bob1), 0.0, Vector2(-sc1, sc1))
 	_draw_hamster(0, 0, false)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
