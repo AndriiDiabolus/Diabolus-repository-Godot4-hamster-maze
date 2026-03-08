@@ -162,6 +162,7 @@ func _ell(center, rx, ry, color, rot=0.0, seg=24)
 | 7 | Звук + Supabase leaderboard + persistent scores | ✅ Готово |
 | 8 | Мобильные touch контролы (HTML-зона ниже canvas) | ✅ Готово |
 | 9A | Танец хомяка при победе (4 фазы + искры + ноты) | ✅ Готово |
+| 9M | Анимация меню: intro сцена + looping chase (пары поочерёдно) | ✅ Готово |
 | 9B | Геймплей: уровни, бонус-предметы, ловушки | 🔜 Следующий приоритет |
 | 9C | Визуальная переработка (спрайты/частицы) | ❌ Запланировано |
 
@@ -342,10 +343,65 @@ ba18499 feat: use Flintstone TTF font for HAMSTER MAZE title
 
 ---
 
+### Сессия 7 (2026-03-08)
+**Сделано:**
+
+**Анимация меню — вступительная сцена (Etap 9A-menu, intro):**
+- `MENU_INTRO_DUR=285` кадров — однократная intro сцена при открытии меню
+- Хомяк появляется по центру, смотрит влево/вправо, замечает ламу, прыгает с "!", убегает вправо
+- Лама входит справа, осматривается, прыгает с "!!", краснеет, гонится влево
+- `_menu_anim_t` сбрасывается при каждом входе в menu-state через `_prev_state` tracking
+
+**Анимация меню — зацикленная погоня (looping chase):**
+- После intro: пары бегут попеременно (не одновременно)
+  - Фаза 1 (340 кадров): большая пара sc=2.2, cy=455, лево→право, красная лама
+  - Фаза 2 (260 кадров): малая пара sc=1.2, cy=425, право→лево, синяя лама
+  - Цикл: 600 кадров (~10 сек при 60fps)
+- Расстояние хомяк↔лама = 1 ширина тела хомяка (40px × scale): 88px / 48px
+- Пыль под ногами (`_menu_dust`) синхронизирована с фазами цикла
+
+**Критическое решение — персонажи поверх кнопок:**
+- Проблема: `_draw_menu_anim()` вызывалась ДО кнопок → персонажи рисовались под ними
+- Решение: перенос вызова ПОСЛЕ всех кнопок и лидерборда
+- Кнопки остались с непрозрачным фоном, персонажи видны поверх полностью
+- Попытки сделать кнопки прозрачными (alpha 0.35 → 0.10) не работали: _draw() рендерит
+  последовательно, поздний вызов = поверх — это правильная архитектура
+
+**Критическое решение — деплой (из сессии 6, закреплено):**
+- Godot Web JS всегда грузит `executable + ".pck"` = `index.pck`
+- `fileSizes` в GODOT_CONFIG — только для прогресс-бара, не влияет на загрузку
+- Переименование `index2/3.pck` бесполезно без `mainPack` override
+- **Правильный способ сброса кэша:**
+  ```bash
+  cp export/web/index.pck /tmp/gh-pages-clean/gameN.pck
+  sed -i '' 's/"gdextensionLibs":\[\]/"mainPack":"gameN.pck","gdextensionLibs":[]/g' index.html
+  ```
+- Текущий деплой: `game7.pck` (gh-pages, 2026-03-08)
+
+**Commits (main):**
+```
+cda4185 feat: menu chase — alternating pairs, 1-hamster gap, chars over buttons
+89863f0 fix: menu anim cy=420-460 (visible range), draw before buttons
+b6b2c65 fix: scale up menu animation characters (HSC=3.5, LSC=3.0, chase 3.0/1.7)
+24b587d feat: menu animation — hamster/llama intro + looping chase
+01a3829 feat: menu animations — twinkling stars + pulsing title
+```
+
+**gh-pages deploys этой сессии:**
+```
+game2.pck — remove debug circles
+game3.pck — alternating pairs + bigger gap
+game4.pck — 1-hamster-width gap (88px/48px)
+game5.pck — transparent buttons attempt (alpha 0.35)
+game6.pck — transparent buttons attempt (alpha 0.10)
+game7.pck — FINAL: chars drawn on top of buttons ← ТЕКУЩИЙ
+```
+
+---
+
 ## Next Steps (следующая сессия)
 
 ### 🔜 Приоритет 1 — Геймплей улучшения (обсуждено, одобрено)
-Выбор сделан в конце сессии 6. Варианты:
 
 **A. Уровни** — после победы лабиринт перегенерируется, множитель сложности растёт:
 - `_level: int` счётчик, отображается в HUD
@@ -367,6 +423,7 @@ ba18499 feat: use Flintstone TTF font for HAMSTER MAZE title
 - RLS политики в Supabase (сейчас таблица открыта всем)
 - Кнопка "Музыка ON/OFF" в HUD или на сплэш
 - Android экспорт: нужен Android SDK + JDK, `Project → Export → Add → Android`
+- Очистить старые game2-6.pck из gh-pages (не критично, ~18 MB мусора)
 
 ### 🌐 Deploy
 ```bash
@@ -375,9 +432,15 @@ ba18499 feat: use Flintstone TTF font for HAMSTER MAZE title
   --headless --path "/Users/andriidiablo/Documents/Test 3.1" \
   --export-release "Web" "/Users/andriidiablo/Documents/Test 3.1/export/web/index.html"
 
-# Deploy gh-pages:
-git worktree add /tmp/gh-pages-deploy gh-pages
-cp export/web/index.html export/web/index.pck /tmp/gh-pages-deploy/
-cd /tmp/gh-pages-deploy && git add -A && git commit -m "Deploy: ..." && git push origin gh-pages
-git worktree remove /tmp/gh-pages-deploy
+# Deploy gh-pages (ПРАВИЛЬНЫЙ способ с cache bust):
+PACK_NAME="gameN.pck"  # N = следующий номер
+rm -rf /tmp/gh-pages-clean && git worktree prune
+git worktree add /tmp/gh-pages-clean gh-pages
+cp export/web/index.html /tmp/gh-pages-clean/index.html
+cp export/web/index.pck /tmp/gh-pages-clean/$PACK_NAME
+sed -i '' "s/\"gdextensionLibs\":\[\]/\"mainPack\":\"$PACK_NAME\",\"gdextensionLibs\":[]/g" /tmp/gh-pages-clean/index.html
+cd /tmp/gh-pages-clean && git add index.html $PACK_NAME
+git commit -m "deploy: $PACK_NAME — описание изменений"
+git push origin gh-pages
+git worktree remove /tmp/gh-pages-clean
 ```
