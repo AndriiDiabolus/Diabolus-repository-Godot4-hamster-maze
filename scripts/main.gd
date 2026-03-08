@@ -825,9 +825,6 @@ func _draw_menu() -> void:
 	draw_string(font, Vector2(cx - 90, 300.0), "Собери все орехи!",
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.55, 0.75, 1.0, 0.55))
 
-	# Анимация меню — рисуется под кнопками
-	_draw_menu_anim()
-
 	# ── Buttons ────────────────────────────────────────────────────────
 	var bw: float = 290.0
 	var bh: float = 54.0
@@ -902,6 +899,9 @@ func _draw_menu() -> void:
 		draw_string(font, Vector2(cx - 40, 600), "Загрузка...",
 			HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, 0.25))
 
+	# Анимация меню — рисуется ПОВЕРХ кнопок
+	_draw_menu_anim()
+
 
 # ── Menu animation: dust spawner ──────────────────────────────────────
 func _menu_add_dust() -> void:
@@ -918,18 +918,21 @@ func _menu_add_dust() -> void:
 		_menu_dust.append({x=lx + 28.0, y=488.0, r=6.0 + randf() * 3.0, life=16, max_life=16})
 	elif t >= MENU_INTRO_DUR:
 		var lt: int = t - MENU_INTRO_DUR
-		# Большая дорожка (sc=2.2, cy=460, ноги на 460+26=486)
 		var p1: int = 340
-		var t1: int = lt % p1
-		if t1 > 0 and t1 < p1 - 5:
-			var hx1: float = -80.0 + float(t1) / float(p1) * float(C.W + 160)
-			_menu_dust.append({x=hx1 - 32.0, y=484.0, r=7.0 + randf() * 3.0, life=18, max_life=18})
-		# Малая дорожка (sc=1.2, cy=420, ноги на 420+14=434)
 		var p2: int = 260
-		var t2: int = lt % p2
-		if t2 > 0 and t2 < p2 - 5:
-			var hx2: float = float(C.W) + 80.0 - float(t2) / float(p2) * float(C.W + 160.0)
-			_menu_dust.append({x=hx2 + 20.0, y=432.0, r=4.0 + randf() * 2.0, life=12, max_life=12})
+		var cycle: int = p1 + p2
+		var phase: int = lt % cycle
+		if phase < p1:
+			# Большая дорожка (sc=2.2, cy=455, ноги на ~481)
+			if phase > 0 and phase < p1 - 5:
+				var hx1: float = -80.0 + float(phase) / float(p1) * float(C.W + 160)
+				_menu_dust.append({x=hx1 - 30.0, y=480.0, r=7.0 + randf() * 3.0, life=18, max_life=18})
+		else:
+			# Малая дорожка (sc=1.2, cy=425, ноги на ~439)
+			var t2: int = phase - p1
+			if t2 > 0 and t2 < p2 - 5:
+				var hx2: float = float(C.W) + 80.0 - float(t2) / float(p2) * float(C.W + 160.0)
+				_menu_dust.append({x=hx2 + 20.0, y=437.0, r=4.0 + randf() * 2.0, life=12, max_life=12})
 
 
 # ── Menu animation: main dispatcher ───────────────────────────────────
@@ -1050,35 +1053,39 @@ func _draw_menu_intro_anim(t: int) -> void:
 
 # ── Menu animation: looping chase ─────────────────────────────────────
 func _draw_menu_chase(lt: int) -> void:
-	# Малая дорожка (дальше): право→лево, синяя лама, sc=1.2
-	var p2: int = 260
-	var t2: int = lt % p2
-	var hx2: float = float(C.W) + 80.0 - float(t2) / float(p2) * float(C.W + 160.0)
-	var cy2: float = 420.0
-	var sc2: float = 1.2
-	var bob2: float = sin(float(lt) * 0.18) * 4.0
+	# Чередование: сначала большая пара, потом маленькая
+	var p1: int = 340  # кадров — большая дорожка
+	var p2: int = 260  # кадров — малая дорожка
+	var cycle: int = p1 + p2
+	var phase: int = lt % cycle
 
-	draw_set_transform(Vector2(hx2 + 38.0, cy2 + bob2), 0.0, Vector2(sc2, sc2))
-	_draw_llama(0, 0, "chase", false)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	draw_set_transform(Vector2(hx2, cy2 + bob2), 0.0, Vector2(sc2, sc2))
-	_draw_hamster(0, 0, false)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-
-	# Большая дорожка (ближе): лево→право, красная лама, sc=2.2
-	var p1: int = 340
-	var t1: int = lt % p1
-	var hx1: float = -80.0 + float(t1) / float(p1) * float(C.W + 160.0)
-	var cy1: float = 460.0
-	var sc1: float = 2.2
-	var bob1: float = sin(float(lt) * 0.22) * 8.0
-
-	draw_set_transform(Vector2(hx1 - 72.0, cy1 - 5.0 + bob1), 0.0, Vector2(-sc1, sc1))
-	_draw_llama(0, 0, "chase", true)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	draw_set_transform(Vector2(hx1, cy1 + bob1), 0.0, Vector2(-sc1, sc1))
-	_draw_hamster(0, 0, false)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	if phase < p1:
+		# Большая дорожка: лево→право, красная лама, sc=2.2
+		var hx1: float = -80.0 + float(phase) / float(p1) * float(C.W + 160.0)
+		var cy1: float = 455.0
+		var sc1: float = 2.2
+		var bob1: float = sin(float(lt) * 0.22) * 8.0
+		# Лама сзади (gap = ширина хомяка при sc=2.2: 40*2.2=88px)
+		draw_set_transform(Vector2(hx1 - 88.0, cy1 - 5.0 + bob1), 0.0, Vector2(-sc1, sc1))
+		_draw_llama(0, 0, "chase", true)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		draw_set_transform(Vector2(hx1, cy1 + bob1), 0.0, Vector2(-sc1, sc1))
+		_draw_hamster(0, 0, false)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	else:
+		# Малая дорожка: право→лево, синяя лама, sc=1.2
+		var t2: int = phase - p1
+		var hx2: float = float(C.W) + 80.0 - float(t2) / float(p2) * float(C.W + 160.0)
+		var cy2: float = 425.0
+		var sc2: float = 1.2
+		var bob2: float = sin(float(lt) * 0.18) * 4.0
+		# Лама сзади (gap = ширина хомяка при sc=1.2: 40*1.2=48px)
+		draw_set_transform(Vector2(hx2 + 48.0, cy2 + bob2), 0.0, Vector2(sc2, sc2))
+		_draw_llama(0, 0, "chase", false)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		draw_set_transform(Vector2(hx2, cy2 + bob2), 0.0, Vector2(sc2, sc2))
+		_draw_hamster(0, 0, false)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 # ── Credits screen ─────────────────────────────────────────────────────
