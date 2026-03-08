@@ -782,10 +782,26 @@ func _draw_menu() -> void:
 		var a: float = 0.032 * (i / 10.0)
 		_ell(Vector2(cx, 300.0), r, r * 0.55, Color(0.15, 0.25, 0.85, a))
 
-	# HAMSTER MAZE title (stone font, Flintstones style)
+	# Мерцающие звёзды
+	for i in 28:
+		var sx: float = float((i * 137 + 43) % C.W)
+		var sy: float = float((i * 89  + 31) % (C.H + C.HUD))
+		var speed: float = 0.028 + float(i % 7) * 0.006
+		var phase: float = float(i) * 0.71
+		var bright: float = 0.4 + 0.6 * (0.5 + 0.5 * sin(float(_frame) * speed + phase))
+		var sr: float = 1.0 + float(i % 3) * 0.65
+		draw_circle(Vector2(sx, sy), sr, Color(0.85, 0.90, 1.0, bright))
+		if i % 5 == 0:
+			var cl: float = bright * 0.5
+			draw_line(Vector2(sx - sr * 2.5, sy), Vector2(sx + sr * 2.5, sy), Color(0.9, 0.95, 1.0, cl), 1.0)
+			draw_line(Vector2(sx, sy - sr * 2.5), Vector2(sx, sy + sr * 2.5), Color(0.9, 0.95, 1.0, cl), 1.0)
+
+	# HAMSTER MAZE title — пульсирующий (bob + scale)
+	var title_bob: float = sin(float(_frame) * 0.045) * 5.0
+	var title_sc: float  = 1.0 + sin(float(_frame) * 0.045) * 0.05
 	var y_offs: Array = [0.0, -8.0, 5.0, -9.0, 7.0, -4.0, 9.0, -6.0, 4.0, -7.0, 5.0, -5.0]
-	_draw_rocky_word("HAMSTER", 0.0, float(C.W), 155.0, 105, y_offs)
-	_draw_rocky_word("MAZE",    0.0, float(C.W), 265.0, 115, y_offs)
+	_draw_rocky_word("HAMSTER", 0.0, float(C.W), 155.0 + title_bob, int(105.0 * title_sc), y_offs)
+	_draw_rocky_word("MAZE",    0.0, float(C.W), 265.0 + title_bob, int(115.0 * title_sc), y_offs)
 
 	draw_string(font, Vector2(cx - 90, 300.0), "Собери все орехи!",
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.55, 0.75, 1.0, 0.55))
