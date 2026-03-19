@@ -12,6 +12,9 @@ const FOG_ALPHA:   float = 0.40  # max fog darkness
 const MOVE_INTERVAL: float = 8.0 / 60.0
 const WIN_SPIN_DUR: int = 240    # кадров (~4 сек) — танец хомяка
 const MENU_INTRO_DUR: int = 285  # кадров — вступительная анимация меню
+const LEVEL_TRANS_DUR: int = 150 # кадров (~2.5 сек) — экран перехода уровня
+const LEVEL_SPEED_MULT: float = 0.06  # на сколько быстрее лама за уровень
+const LEVEL_SPEED_MIN: int = 12       # минимум фреймов/шаг (макс скорость ламы)
 var _move_timer: float = 0.0
 var _frame: int = 0
 
@@ -27,17 +30,25 @@ const MB_BURROW_X: float = 820.0
 const MB_BURROW_Y: float = 980.0
 
 # ── Game state ────────────────────────────────────────────────────────
-# menu → (splash | play) → (lost | won_name) → (won) → menu
+# menu → play → level_up → play → ... → lost → won_name → won → menu
 var _state: String = "menu"
 var _music_on: bool = true
 var _menu_selected: int = 0             # 0=play, 1=music, 2=credits
 var _menu_btn_rects: Dictionary = {}   # "play","music","credits","back" → Rect2
 var _game_start_ms: int = 0
 var _game_time_ms: int = 0
+var _total_time_ms: int = 0     # суммарное время всех уровней
 var _win_anim_t: int = 0
+var _level: int = 1
+var _level_trans_t: int = 0     # счётчик анимации перехода уровня
 var _menu_anim_t: int = 0    # счётчик анимации меню
 var _menu_dust: Array = []    # [{x,y,r,life,max_life}]
 var _prev_state: String = "" # для сброса анимации при входе в меню
+var _particles: Array = []   # [{x,y,vx,vy,life,max_life,color}]
+var _bonuses: Array = []     # [{x,y,type,got}] type: "shield"|"speed"|"freeze"
+var _shield_until: int = 0   # Time.get_ticks_msec() до которого действует щит
+var _speed_until: int = 0    # до которого действует скорость
+var _freeze_until: int = 0   # до которого ламы заморожены
 
 # ── Maze ──────────────────────────────────────────────────────────────
 var _maze: Array = []
@@ -173,12 +184,13 @@ func _on_name_submitted(text: String) -> void:
 	var nm: String = text.strip_edges()
 	if nm.is_empty():
 		nm = "Хомяк"
-	_scores.append({"name": nm, "time_ms": _game_time_ms})
-	_scores.sort_custom(func(a, b): return a.time_ms < b.time_ms)
+	_scores.append({"name": nm, "time_ms": _total_time_ms, "level": _level})
+	_scores.sort_custom(func(a, b): return a.get("level", 1) > b.get("level", 1) or \
+		(a.get("level", 1) == b.get("level", 1) and a.time_ms < b.time_ms))
 	if _scores.size() > 10:
 		_scores.resize(10)
 	_save_scores()
-	_post_score(nm, _game_time_ms)
+	_post_score(nm, _total_time_ms)
 	_hide_name_input()
 	_state = "won"
 	queue_redraw()
@@ -311,6 +323,12 @@ func _parse_scores_json(raw: String) -> void:
 
 # ── Start game ────────────────────────────────────────────────────────
 func _start_game() -> void:
+	_level = 1
+	_total_time_ms = 0
+	_start_level()
+
+
+func _start_level() -> void:
 	_maze = _maze_gen.make_maze()
 	_ham = {"x": 1, "y": 1, "burrowed": false, "burrows": 3}
 	_state = "play"
@@ -327,6 +345,10 @@ func _start_game() -> void:
 	_llama2 = null
 
 	_init_nuts(ls)
+	_init_bonuses(ls)
+	_shield_until = 0
+	_speed_until = 0
+	_freeze_until = 0
 
 	_rh = RHManager.new()
 	_rh.init(_maze)
@@ -353,7 +375,7 @@ func _init_nuts(llama_start: Vector2i) -> void:
 	while _nuts.size() < C.NUT_MIN_COUNT:
 		for r in range(1, C.ROWS - 1):
 			for col in range(1, C.COLS - 1):
-				if _maze[r][col] == 0 and _nuts.size() < 30:
+				if _maze[r][col] == 0 and _nuts.size() < C.NUT_MIN_COUNT:
 					var dup := false
 					for n in _nuts:
 						if n.x == col and n.y == r:
@@ -362,6 +384,8 @@ func _init_nuts(llama_start: Vector2i) -> void:
 					if not dup:
 						_nuts.append({"x": col, "y": r, "got": false, "visible": false})
 	_nuts.shuffle()
+	if _nuts.size() > C.NUT_MAX_COUNT:
+		_nuts.resize(C.NUT_MAX_COUNT)
 	var first_wave: int = max(6, int(ceil(_nuts.size() * C.NUT_FIRST_WAVE_PCT)))
 	for i in range(first_wave):
 		_nuts[i].visible = true
@@ -415,7 +439,12 @@ func _input(event: InputEvent) -> void:
 		match _state:
 			"splash":
 				_start_game()
-			"lost", "won":
+			"lost":
+				_state = "won_name"
+				_win_anim_t = WIN_SPIN_DUR  # пропускаем танец
+				_show_name_input()
+				queue_redraw()
+			"won":
 				_state = "menu"
 				_fetch_online_scores()
 				queue_redraw()
@@ -488,7 +517,13 @@ func _handle_screen_input(event: InputEvent) -> void:
 			"splash":
 				_start_game()
 				return
-			"lost", "won":
+			"lost":
+				_state = "won_name"
+				_win_anim_t = WIN_SPIN_DUR  # пропускаем танец
+				_show_name_input()
+				queue_redraw()
+				return
+			"won":
 				_state = "menu"
 				_fetch_online_scores()
 				queue_redraw()
@@ -582,6 +617,14 @@ func _process(delta: float) -> void:
 		queue_redraw()
 		return
 
+	if _state == "level_up":
+		_level_trans_t += 1
+		if _level_trans_t >= LEVEL_TRANS_DUR:
+			_level += 1
+			_start_level()
+		queue_redraw()
+		return
+
 	if _state == "won_name":
 		_win_anim_t += 1
 		if _win_anim_t == WIN_SPIN_DUR:
@@ -598,9 +641,11 @@ func _process(delta: float) -> void:
 		var now_ms: int = Time.get_ticks_msec()
 		_game_time_ms = now_ms - _game_start_ms
 		_llama_bonus = min(C.LLAMA_BONUS_MAX, _game_time_ms / C.LLAMA_BONUS_INTERVAL_MS)
+		_update_particles()
 
+		var move_int: float = MOVE_INTERVAL * 0.5 if now_ms < _speed_until else MOVE_INTERVAL
 		_move_timer += delta
-		if _move_timer >= MOVE_INTERVAL and not _ham.burrowed:
+		if _move_timer >= move_int and not _ham.burrowed:
 			_move_timer = 0.0
 			var dx: int = 0
 			var dy: int = 0
@@ -642,25 +687,37 @@ func _process(delta: float) -> void:
 				break
 
 		_update_nuts(now_ms)
+		_update_bonuses(now_ms)
+
+		var level_bonus: int = (_level - 1) * 3  # +3 скорости за каждый уровень
+		var shielded: bool = now_ms < _shield_until
+		var frozen: bool = now_ms < _freeze_until
 
 		if _llama:
-			var caught := _llama.update(_ham.x, _ham.y, _ham.burrowed, _llama_bonus)
-			if caught:
-				_state = "lost"
-				_game_time_ms = Time.get_ticks_msec() - _game_start_ms
-				_play(_snd_catch)
+			if not frozen:
+				var caught := _llama.update(_ham.x, _ham.y, _ham.burrowed, _llama_bonus + level_bonus)
+				if caught and not shielded:
+					_state = "lost"
+					_game_time_ms = Time.get_ticks_msec() - _game_start_ms
+					_total_time_ms += _game_time_ms
+					_win_anim_t = 0
+					_play(_snd_catch)
 
-		if _llama2 == null and _game_time_ms >= C.LLAMA2_SPAWN_MS:
+		var llama2_delay: int = max(10000, C.LLAMA2_SPAWN_MS - (_level - 1) * 10000)
+		if _llama2 == null and _game_time_ms >= llama2_delay:
 			var s2 := _random_far_cell(_ham.x, _ham.y, 8)
 			_llama2 = LlamaAI.new()
 			_llama2.init(s2.x, s2.y, _maze)
 
 		if _llama2:
-			var caught2 := _llama2.update(_ham.x, _ham.y, _ham.burrowed, _llama_bonus)
-			if caught2:
-				_state = "lost"
-				_game_time_ms = Time.get_ticks_msec() - _game_start_ms
-				_play(_snd_catch)
+			if not frozen:
+				var caught2 := _llama2.update(_ham.x, _ham.y, _ham.burrowed, _llama_bonus + level_bonus)
+				if caught2 and not shielded:
+					_state = "lost"
+					_game_time_ms = Time.get_ticks_msec() - _game_start_ms
+					_total_time_ms += _game_time_ms
+					_win_anim_t = 0
+					_play(_snd_catch)
 
 	queue_redraw()
 
@@ -671,6 +728,7 @@ func _update_nuts(now_ms: int) -> void:
 		if not n.got and n.visible and n.x == _ham.x and n.y == _ham.y:
 			n.got = true
 			_play(_snd_eat)
+			_spawn_particles(n.x * C.CELL + C.CELL * 0.5, n.y * C.CELL + C.CELL * 0.5)
 
 	var vis_left: int = 0
 	var hid_left: int = 0
@@ -682,11 +740,11 @@ func _update_nuts(now_ms: int) -> void:
 				hid_left += 1
 
 	if vis_left == 0 and hid_left == 0:
-		_state = "won_name"
 		_game_time_ms = Time.get_ticks_msec() - _game_start_ms
-		_win_anim_t = 0
+		_total_time_ms += _game_time_ms
+		_state = "level_up"
+		_level_trans_t = 0
 		_play(_snd_win)
-		# _show_name_input() вызывается после WIN_SPIN_DUR кадров анимации
 		return
 
 	if vis_left == 0 and hid_left > 0:
@@ -715,6 +773,105 @@ func _try_move(dx: int, dy: int) -> void:
 	if nx >= 0 and nx < C.COLS and ny >= 0 and ny < C.ROWS and _maze[ny][nx] == 0:
 		_ham.x = nx
 		_ham.y = ny
+
+
+func _init_bonuses(llama_start: Vector2i) -> void:
+	_bonuses = []
+	var types: Array = ["shield", "speed", "freeze"]
+	var count: int = 2 + min(_level, 3)  # 3 на ур.1, 4 на ур.2, max 5
+	var candidates: Array = []
+	for r in range(1, C.ROWS - 1):
+		for col in range(1, C.COLS - 1):
+			if _maze[r][col] == 0 \
+					and not (col == 1 and r == 1) \
+					and not (col == llama_start.x and r == llama_start.y):
+				# Не ставим на орехи
+				var on_nut := false
+				for n in _nuts:
+					if n.x == col and n.y == r:
+						on_nut = true
+						break
+				if not on_nut:
+					candidates.append(Vector2i(col, r))
+	candidates.shuffle()
+	for i in range(min(count, candidates.size())):
+		var pos: Vector2i = candidates[i]
+		_bonuses.append({x = pos.x, y = pos.y, type = types[i % types.size()], got = false})
+
+
+func _spawn_particles(px: float, py: float) -> void:
+	for i in range(7):
+		var angle: float = randf() * TAU
+		var spd: float = 1.5 + randf() * 2.5
+		var colors: Array = [Color("#ffd700"), Color("#ffaa00"), Color("#ffe066"), Color("#ff8800")]
+		_particles.append({
+			x = px, y = py,
+			vx = cos(angle) * spd, vy = sin(angle) * spd - 1.0,
+			life = 20 + randi() % 10, max_life = 30,
+			color = colors[i % colors.size()]
+		})
+
+
+func _update_bonuses(now_ms: int) -> void:
+	for b in _bonuses:
+		if not b.got and b.x == _ham.x and b.y == _ham.y:
+			b.got = true
+			_spawn_particles(b.x * C.CELL + C.CELL * 0.5, b.y * C.CELL + C.CELL * 0.5)
+			match b.type:
+				"shield":
+					_shield_until = now_ms + 5000
+				"speed":
+					_speed_until = now_ms + 4000
+				"freeze":
+					_freeze_until = now_ms + 4000
+
+
+func _update_particles() -> void:
+	for i in range(_particles.size() - 1, -1, -1):
+		var p: Dictionary = _particles[i]
+		p.x += p.vx
+		p.y += p.vy
+		p.vy += 0.12  # gravity
+		p.life -= 1
+		if p.life <= 0:
+			_particles.remove_at(i)
+
+
+func _draw_bonus(bx: int, by: int, btype: String) -> void:
+	var cx: float = bx * C.CELL + C.CELL * 0.5
+	var cy: float = by * C.CELL + C.CELL * 0.5
+	var bob: float = sin(float(_frame) * 0.1 + float(bx * 7 + by * 13)) * 2.0
+	cy += bob
+	# Glow
+	var glow_a: float = 0.15 + 0.10 * sin(float(_frame) * 0.08)
+	match btype:
+		"shield":
+			_ell(Vector2(cx, cy), 12, 12, Color(0.2, 0.5, 1.0, glow_a))
+			_ell(Vector2(cx, cy), 7, 8, Color(0.3, 0.6, 1.0, 0.9))
+			_ell(Vector2(cx, cy - 1), 5, 6, Color(0.5, 0.8, 1.0, 0.7))
+			draw_circle(Vector2(cx, cy + 1), 2.0, Color(1.0, 1.0, 1.0, 0.5))
+		"speed":
+			_ell(Vector2(cx, cy), 12, 12, Color(1.0, 0.8, 0.0, glow_a))
+			_ell(Vector2(cx, cy), 7, 7, Color(1.0, 0.7, 0.0, 0.9))
+			# Молния
+			var pts := PackedVector2Array([
+				Vector2(cx - 2, cy - 7), Vector2(cx + 2, cy - 2),
+				Vector2(cx - 1, cy - 2), Vector2(cx + 3, cy + 7),
+				Vector2(cx, cy + 1), Vector2(cx - 3, cy + 1),
+			])
+			draw_colored_polygon(pts, Color(1.0, 1.0, 0.3, 0.95))
+		"freeze":
+			_ell(Vector2(cx, cy), 14, 14, Color(0.3, 0.9, 1.0, glow_a + 0.10))
+			_ell(Vector2(cx, cy), 9, 9, Color(0.3, 0.85, 1.0, 0.9))
+			_ell(Vector2(cx, cy), 5, 5, Color(0.7, 1.0, 1.0, 0.8))
+			# Снежинка — 3 линии крестом, вращающаяся
+			var lc := Color(1.0, 1.0, 1.0, 0.9)
+			var rot_off: float = float(_frame) * 0.03
+			for i in range(3):
+				var ang: float = float(i) / 3.0 * PI + rot_off
+				var ddx: float = cos(ang) * 7.0
+				var ddy: float = sin(ang) * 7.0
+				draw_line(Vector2(cx - ddx, cy - ddy), Vector2(cx + ddx, cy + ddy), lc, 2.0)
 
 
 func _random_far_cell(from_x: int, from_y: int, min_dist: int) -> Vector2i:
@@ -749,6 +906,10 @@ func _draw() -> void:
 		if n.visible and not n.got:
 			_draw_nut(n.x, n.y)
 
+	for b in _bonuses:
+		if not b.got:
+			_draw_bonus(b.x, b.y, b.type)
+
 	var now_ms: int = Time.get_ticks_msec()
 	var pairs: Array = _rh.get_pairs()
 	for i in range(pairs.size()):
@@ -759,30 +920,55 @@ func _draw() -> void:
 			for h in pair.next_pos:
 				_draw_rabbit(h.x, h.y, pair.open_at, now_ms)
 
-	_draw_hamster(
-		_ham.x * C.CELL + C.CELL * 0.5,
-		_ham.y * C.CELL + C.CELL * 0.5,
-		_ham.burrowed
-	)
+	var hcx: float = _ham.x * C.CELL + C.CELL * 0.5
+	var hcy: float = _ham.y * C.CELL + C.CELL * 0.5
+	var now_eff: int = Time.get_ticks_msec()
+	# Shield aura (behind hamster)
+	if now_eff < _shield_until:
+		var sa: float = 0.2 + 0.15 * sin(float(_frame) * 0.15)
+		_ell(Vector2(hcx, hcy), 18, 16, Color(0.2, 0.5, 1.0, sa))
+		_ell(Vector2(hcx, hcy), 14, 12, Color(0.3, 0.6, 1.0, sa * 0.7))
+	# Speed trail (behind hamster)
+	if now_eff < _speed_until:
+		var sa2: float = 0.3 + 0.2 * sin(float(_frame) * 0.2)
+		_ell(Vector2(hcx, hcy), 16, 14, Color(1.0, 0.8, 0.0, sa2 * 0.4))
+	_draw_hamster(hcx, hcy, _ham.burrowed)
+	# Shield ring (on top of hamster)
+	if now_eff < _shield_until:
+		var ring_a: float = 0.5 + 0.3 * sin(float(_frame) * 0.12)
+		draw_arc(Vector2(hcx, hcy), 15.0, 0, TAU, 24, Color(0.3, 0.6, 1.0, ring_a), 1.5)
 	if _llama:
-		_draw_llama(
-			_llama.x * C.CELL + C.CELL * 0.5,
-			_llama.y * C.CELL + C.CELL * 0.5,
-			_llama.state, false
-		)
+		var lcx: float = _llama.x * C.CELL + C.CELL * 0.5
+		var lcy: float = _llama.y * C.CELL + C.CELL * 0.5
+		_draw_llama(lcx, lcy, _llama.state, false)
+		if now_eff < _freeze_until:
+			var fa: float = 0.4 + 0.2 * sin(float(_frame) * 0.15)
+			_ell(Vector2(lcx, lcy), 16, 14, Color(0.2, 0.7, 1.0, fa))
+			draw_arc(Vector2(lcx, lcy), 14.0, 0, TAU, 16, Color(0.5, 0.95, 1.0, fa + 0.1), 1.5)
 	if _llama2:
-		_draw_llama(
-			_llama2.x * C.CELL + C.CELL * 0.5,
-			_llama2.y * C.CELL + C.CELL * 0.5,
-			_llama2.state, true
-		)
+		var lcx2: float = _llama2.x * C.CELL + C.CELL * 0.5
+		var lcy2: float = _llama2.y * C.CELL + C.CELL * 0.5
+		_draw_llama(lcx2, lcy2, _llama2.state, true)
+		if now_eff < _freeze_until:
+			var fa2: float = 0.4 + 0.2 * sin(float(_frame) * 0.15)
+			_ell(Vector2(lcx2, lcy2), 16, 14, Color(0.2, 0.7, 1.0, fa2))
+			draw_arc(Vector2(lcx2, lcy2), 14.0, 0, TAU, 16, Color(0.5, 0.95, 1.0, fa2 + 0.1), 1.5)
+
+	# Частицы (перед туманом, чтобы fog тоже их скрывал на расстоянии)
+	for p in _particles:
+		var a: float = float(p.life) / float(p.max_life)
+		var c: Color = p.color
+		c.a = a
+		draw_circle(Vector2(p.x, p.y), 3.0 * a + 1.0, c)
 
 	if _state == "play":
 		_draw_fog()
 
 	_draw_hud()
 
-	if _state == "lost":
+	if _state == "level_up":
+		_draw_level_up()
+	elif _state == "lost":
 		_draw_lost_overlay()
 	elif _state == "won" or _state == "won_name":
 		_draw_win_overlay()
@@ -1465,6 +1651,27 @@ func _draw_hud() -> void:
 					sc.a = alpha
 				draw_string(font, Vector2(318, Y + 28), d[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 14, sc)
 
+	# Level
+	var lvl_str: String = "Ур. %d" % _level
+	draw_string(font, Vector2(C.W - 75, Y + 20), lvl_str,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#ffd700"))
+
+	# Active bonus indicators
+	var bx_pos: float = C.W - 75
+	var now_hud: int = Time.get_ticks_msec()
+	if now_hud < _shield_until:
+		var secs: float = float(_shield_until - now_hud) / 1000.0
+		draw_string(font, Vector2(bx_pos, Y + 40), "🛡️%.1f" % secs,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.3, 0.7, 1.0))
+	if now_hud < _speed_until:
+		var secs2: float = float(_speed_until - now_hud) / 1000.0
+		draw_string(font, Vector2(bx_pos - 55, Y + 40), "⚡%.1f" % secs2,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(1.0, 0.8, 0.0))
+	if now_hud < _freeze_until:
+		var secs3: float = float(_freeze_until - now_hud) / 1000.0
+		draw_string(font, Vector2(bx_pos - 110, Y + 40), "❄️%.1f" % secs3,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.3, 0.9, 1.0))
+
 	# Timer
 	draw_string(font, Vector2(C.W * 0.5 - 30, Y + 22), "⏱ %s" % _fmt_time(_game_time_ms),
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("#7799cc"))
@@ -1480,6 +1687,61 @@ func _draw_hud() -> void:
 		hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("#3a3a5a"))
 
 
+func _draw_level_up() -> void:
+	var t: int = _level_trans_t
+	var font := ThemeDB.fallback_font
+	var cx: float = C.W * 0.5
+	var cy: float = C.H * 0.5
+
+	# Фон затемняется
+	var bg_a: float = min(float(t) / 30.0, 1.0) * 0.85
+	draw_rect(Rect2(0, 0, C.W, C.H + C.HUD), Color(0, 0, 0, bg_a))
+
+	# Следующий уровень
+	var next_lvl: int = _level + 1
+	var title: String = "УРОВЕНЬ %d" % next_lvl
+
+	# Масштаб: вырастает из 0 до 1 за первые 30 кадров
+	var sc: float = min(float(t) / 30.0, 1.0)
+	# Пульсация
+	if t > 30:
+		sc += sin(float(t - 30) * 0.08) * 0.08
+
+	var sz: int = int(52.0 * sc)
+	if sz < 4:
+		sz = 4
+	var tw: float = font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, sz).x
+	draw_string(font, Vector2(cx - tw * 0.5, cy - 10), title,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, sz, Color("#ffd700"))
+
+	# Время за уровень
+	if t > 20:
+		var time_a: float = min(float(t - 20) / 20.0, 1.0)
+		var time_str: String = "Время: %s" % _fmt_time(_game_time_ms)
+		var tsz: int = 18
+		var ttw: float = font.get_string_size(time_str, HORIZONTAL_ALIGNMENT_LEFT, -1, tsz).x
+		draw_string(font, Vector2(cx - ttw * 0.5, cy + 35), time_str,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, tsz, Color(0.7, 0.85, 1.0, time_a))
+
+	# Хомяк танцует (маленький bounce)
+	if t > 15:
+		var bounce: float = abs(sin(float(t) * 0.15)) * 15.0
+		var hsc: float = 3.5 * sc
+		draw_set_transform(Vector2(cx, cy + 75 - bounce), 0.0, Vector2(hsc, hsc))
+		_draw_hamster(0, 0, false)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+	# 8 звёздочек по кругу
+	if t > 40:
+		for i in range(8):
+			var angle: float = float(i) / 8.0 * TAU + float(t) * 0.04
+			var r: float = 120.0 + sin(float(t) * 0.1 + float(i)) * 20.0
+			var sx: float = cx + cos(angle) * r
+			var sy: float = cy + sin(angle) * r
+			var star_a: float = min(float(t - 40) / 20.0, 1.0) * (0.5 + 0.5 * sin(float(t) * 0.15 + float(i) * 0.8))
+			draw_circle(Vector2(sx, sy), 4.0, Color(1.0, 0.85, 0.2, star_a))
+
+
 func _draw_lost_overlay() -> void:
 	draw_rect(Rect2(0, 0, C.W, C.H + C.HUD + C.CTRL_H), Color(0, 0, 0, 0.78))
 	var font := ThemeDB.fallback_font
@@ -1493,10 +1755,13 @@ func _draw_lost_overlay() -> void:
 	for n in _nuts:
 		if n.got:
 			collected += 1
-	draw_string(font, Vector2(cx - 100, cy + 72),
-		"Собрано орехов: %d / %d" % [collected, _nuts.size()],
+	draw_string(font, Vector2(cx - 100, cy + 65),
+		"Уровень: %d   Орехи: %d / %d" % [_level, collected, _nuts.size()],
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color("#c8b060", 0.85))
-	draw_string(font, Vector2(cx - 130, cy + 98), "Enter — в главное меню", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(1,1,1,0.45))
+	draw_string(font, Vector2(cx - 80, cy + 88),
+		"Общее время: %s" % _fmt_time(_total_time_ms),
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.7, 0.85, 1.0, 0.85))
+	draw_string(font, Vector2(cx - 130, cy + 112), "Enter — сохранить результат", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(1,1,1,0.45))
 
 
 func _draw_win_anim() -> void:
@@ -1594,11 +1859,14 @@ func _draw_win_overlay() -> void:
 			_draw_win_anim()
 			return
 		# Waiting for player to type name
-		draw_rect(Rect2(cx - 240, cy - 120, 480, 220), Color("#0d2a0d"))
-		draw_rect(Rect2(cx - 240, cy - 120, 480, 220), Color("#ffd700"), false, 2.0)
-		draw_string(font, Vector2(cx - 95, cy - 78), "ПОБЕДА!", HORIZONTAL_ALIGNMENT_LEFT, -1, 46, Color("#ffd700"))
-		draw_string(font, Vector2(cx - 140, cy - 28), "Все орехи собраны! Время: %s" % _fmt_time(_game_time_ms),
+		draw_rect(Rect2(cx - 240, cy - 130, 480, 240), Color("#0d2a0d"))
+		draw_rect(Rect2(cx - 240, cy - 130, 480, 240), Color("#ffd700"), false, 2.0)
+		draw_string(font, Vector2(cx - 80, cy - 90), "РЕЗУЛЬТАТ", HORIZONTAL_ALIGNMENT_LEFT, -1, 38, Color("#ffd700"))
+		draw_string(font, Vector2(cx - 120, cy - 45),
+			"Уровень: %d   Время: %s" % [_level, _fmt_time(_total_time_ms)],
 			HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("#c8e878"))
+		draw_string(font, Vector2(cx - 75, cy - 20), "Введи имя:",
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(0.7, 0.85, 1.0, 0.85))
 		# Name input area highlighted (LineEdit node renders on top)
 		draw_rect(Rect2(cx - 125, cy + 17, 250, 40), Color("#1a1a3a"))
 		draw_rect(Rect2(cx - 125, cy + 17, 250, 40), Color("#ffd700", 0.5), false, 1.5)
@@ -1609,11 +1877,12 @@ func _draw_win_overlay() -> void:
 	var bw: float = 480.0 * pulse
 	draw_rect(Rect2(cx - bw * 0.5, cy - 170, bw, 360), Color("#0d2a0d"))
 	draw_rect(Rect2(cx - bw * 0.5, cy - 170, bw, 360), Color("#ffd700"), false, 2.5)
-	draw_string(font, Vector2(cx - 95, cy - 125), "ПОБЕДА!", HORIZONTAL_ALIGNMENT_LEFT, -1, 46, Color("#ffd700"))
-	draw_string(font, Vector2(cx - 130, cy - 75), "Все орехи собраны! Время: %s" % _fmt_time(_game_time_ms),
+	draw_string(font, Vector2(cx - 80, cy - 125), "РЕЗУЛЬТАТ", HORIZONTAL_ALIGNMENT_LEFT, -1, 40, Color("#ffd700"))
+	draw_string(font, Vector2(cx - 130, cy - 75),
+		"Уровень: %d   Время: %s" % [_level, _fmt_time(_total_time_ms)],
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("#c8e878"))
 
-	# Leaderboard inside win overlay
+	# Leaderboard inside overlay
 	draw_rect(Rect2(cx - 200, cy - 50, 400, 1), Color("#1a3060"))
 	draw_string(font, Vector2(cx - 80, cy - 32), "Таблица рекордов",
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#ffd700", 0.8))
@@ -1621,15 +1890,12 @@ func _draw_win_overlay() -> void:
 	var lb_y: float = cy - 8.0
 	for i in range(min(_scores.size(), 6)):
 		var sc: Dictionary = _scores[i]
-		var is_last: bool = (sc.time_ms == _game_time_ms and i == _scores.size() - 1) or \
-							(sc.time_ms == _game_time_ms)
 		var rank_c: Color = Color("#ffd700") if i == 0 else Color(0.75, 0.9, 1.0, 0.85)
-		if is_last and i == 0:
-			rank_c = Color("#ffd700")
 		var medals := ["1.", "2.", "3.", "4.", "5.", "6."]
 		draw_string(font, Vector2(cx - 190, lb_y), medals[i],
 			HORIZONTAL_ALIGNMENT_LEFT, -1, 13, rank_c)
-		draw_string(font, Vector2(cx - 165, lb_y), sc.name,
+		var lvl_str: String = "Ур.%d" % sc.get("level", 1)
+		draw_string(font, Vector2(cx - 165, lb_y), "%s  %s" % [sc.name, lvl_str],
 			HORIZONTAL_ALIGNMENT_LEFT, -1, 13, rank_c)
 		draw_string(font, Vector2(cx + 80, lb_y), _fmt_time(sc.time_ms),
 			HORIZONTAL_ALIGNMENT_LEFT, -1, 13, rank_c)

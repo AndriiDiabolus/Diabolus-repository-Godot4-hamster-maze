@@ -30,8 +30,9 @@ const RH_DIG_MS:      int = 10000
 const NUT_WAVE_INTERVAL_MS: int = 25000
 const NUT_FIRST_WAVE_PCT:   float = 0.35
 const NUT_NEXT_WAVE_PCT:    float = 0.40
-const NUT_MIN_COUNT:        int   = 20
-const NUT_SPAWN_CHANCE:     float = 0.18
+const NUT_MIN_COUNT:        int   = 15
+const NUT_MAX_COUNT:        int   = 30
+const NUT_SPAWN_CHANCE:     float = 0.12
 
 # Llama 2 spawn delay
 const LLAMA2_SPAWN_MS: int = 60000
