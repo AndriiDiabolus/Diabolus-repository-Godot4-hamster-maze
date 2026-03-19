@@ -63,8 +63,8 @@ LLAMA2_SPAWN_MS=60000, LLAMA_BONUS_INTERVAL_MS=30000, LLAMA_BONUS_MAX=8
 
 ### State machine
 ```
-splash → (Enter/Tap) → play → (поймана) → lost → (Enter/Tap) → splash
-                             → (все орехи) → won_name → (ввёл имя) → won → (Enter/Tap) → splash
+menu → play → level_up → play → ... → lost → won_name → won → menu
+                                     → (все орехи) → level_up → (авто) → play (следующий уровень)
 ```
 
 ### Ключевые переменные
@@ -88,6 +88,14 @@ _name_layer: CanvasLayer
 _name_edit: LineEdit     # для ввода имени после победы
 _frame: int              # счётчик кадров (для анимаций)
 _win_anim_t: int         # таймер анимации победы (0..WIN_SPIN_DUR=240)
+_level: int              # текущий уровень (с 1)
+_level_trans_t: int      # таймер анимации перехода уровня
+_total_time_ms: int      # суммарное время всех уровней
+_bonuses: Array          # [{x,y,type,got}] shield/speed/freeze
+_shield_until: int       # Time.get_ticks_msec() до которого щит
+_speed_until: int        # до которого скорость x2
+_freeze_until: int       # до которого ламы заморожены
+_particles: Array        # [{x,y,vx,vy,life,max_life,color}]
 ```
 
 ### Анимация победы (танец хомяка)
@@ -163,7 +171,7 @@ func _ell(center, rx, ry, color, rot=0.0, seg=24)
 | 8 | Мобильные touch контролы (HTML-зона ниже canvas) | ✅ Готово |
 | 9A | Танец хомяка при победе (4 фазы + искры + ноты) | ✅ Готово |
 | 9M | Анимация меню: intro сцена + looping chase (пары поочерёдно) | ✅ Готово |
-| 9B | Геймплей: уровни, бонус-предметы, ловушки | 🔜 Следующий приоритет |
+| 9B | Геймплей: уровни, бонус-предметы, частицы | ✅ Готово |
 | 9C | Визуальная переработка (спрайты/частицы) | ❌ Запланировано |
 
 ---
@@ -399,31 +407,58 @@ game7.pck — FINAL: chars drawn on top of buttons ← ТЕКУЩИЙ
 
 ---
 
+### Сессия 8 (2026-03-16)
+**Сделано:**
+
+**Etap 9B — Уровни:**
+- Бесконечные уровни: `_level` счётчик, после сбора всех орехов → `level_up` экран → новый лабиринт
+- `LEVEL_TRANS_DUR=150` кадров (~2.5 сек) — экран "УРОВЕНЬ N!" с анимацией (пульс, хомяк прыгает, звёздочки)
+- Масштабирование сложности: лама +3 скорости за уровень, красная лама спавнится раньше (-10с/ур, мин 10с)
+- Время суммируется (`_total_time_ms`) через все уровни
+- Проигрыш: `lost` → Enter → `won_name` (ввод имени) → `won` → меню
+- Рекорды сортируются по уровню (выше=лучше), затем по времени
+
+**Etap 9B — Бонус-предметы:**
+- 3 типа: `shield` (5с неуязвимость), `speed` (4с двойная скорость), `freeze` (4с заморозка лам)
+- 3-5 штук на уровне (`2 + min(_level, 3)`)
+- Визуал: shield=синий шар, speed=жёлтый с молнией, freeze=голубой с вращающейся снежинкой
+- Эффекты: shield=синяя аура+кольцо на хомяке, freeze=ледяная аура+кольцо на ламах
+- HUD: таймеры обратного отсчёта для активных бонусов
+
+**Etap 9B — Частицы:**
+- 7 золотых кружков при сборе ореха/бонуса, разлетаются с гравитацией
+
+**Изменения орехов:**
+- `NUT_SPAWN_CHANCE` 0.18→0.12, `NUT_MIN_COUNT` 20→15, `NUT_MAX_COUNT`=30 (новая константа)
+
+**Commits (main):**
+```
+b2b8c79 feat: Etap 9B — levels, bonus items, nut particles
+7529e37 docs: session 7 wrap-up — update CLAUDE.md with menu animation details
+cda4185 feat: menu chase — alternating pairs, 1-hamster gap, chars over buttons
+```
+
+**gh-pages deploys этой сессии:**
+```
+game8.pck — level system (infinite levels, difficulty scaling)
+game9.pck — nut cap 30 (spawn 0.12, min 15)
+game10.pck — bonus items (shield/speed/freeze) + particles
+game11.pck — brighter freeze item + pulsing ice aura ← ТЕКУЩИЙ
+```
+
+---
+
 ## Next Steps (следующая сессия)
-
-### 🔜 Приоритет 1 — Геймплей улучшения (обсуждено, одобрено)
-
-**A. Уровни** — после победы лабиринт перегенерируется, множитель сложности растёт:
-- `_level: int` счётчик, отображается в HUD
-- Лама быстрее: `LSPEED_BASE * (1 - level * 0.05)`, минимум 12 фреймов/шаг
-- Больше орехов нужно: `NUT_FIRST_WAVE_PCT` растёт
-- Экран "Level N!" между уровнями с новой анимацией
-
-**B. Бонус-предметы** — появляются редко на карте (тип `{x,y,type,visible}`):
-- 🛡️ `shield` — хомяк неуязвим 5 сек (лама не ловит), синяя аура вокруг
-- ⚡ `speed` — движение каждые 4 фрейма вместо 8 на 4 сек
-- ❄️ `freeze` — `_llama.frozen_until_ms` — лама стоит 4 сек
-- Появление: редкие клетки-проходы при спавне уровня (~3-4 штуки)
-
-**C. Частицы при сборе ореха** — 6-8 кружков разлетаются и тают (~легко):
-- `_particles: Array[{x,y,vx,vy,life,color}]`, обновляются в `_process()`
 
 ### 🔧 Технические улучшения (по желанию)
 - Заменить `eat_nut.mp3` (CC BY-NC) на CC0 с Kenney.nl
 - RLS политики в Supabase (сейчас таблица открыта всем)
-- Кнопка "Музыка ON/OFF" в HUD или на сплэш
 - Android экспорт: нужен Android SDK + JDK, `Project → Export → Add → Android`
-- Очистить старые game2-6.pck из gh-pages (не критично, ~18 MB мусора)
+- Очистить старые game2-10.pck из gh-pages (не критично, ~40 MB мусора)
+
+### 🎨 9C — Визуальная переработка
+- Спрайты или улучшение `_draw()` персонажей
+- Анимации бега, поворота, сбора
 
 ### 🌐 Deploy
 ```bash
