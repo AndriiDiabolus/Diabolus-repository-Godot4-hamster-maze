@@ -45,6 +45,11 @@ var _menu_anim_t: int = 0    # счётчик анимации меню
 var _menu_dust: Array = []    # [{x,y,r,life,max_life}]
 var _prev_state: String = "" # для сброса анимации при входе в меню
 var _particles: Array = []   # [{x,y,vx,vy,life,max_life,color}]
+var _ham_moving: bool = false  # true когда хомяк двигается (для анимации ног)
+var _ham_visual_x: float = 1.0  # visual interpolated position
+var _ham_visual_y: float = 1.0
+var _dust_particles: Array = []  # [{x,y,vx,vy,life,max_life}] пыль под ногами
+var _paused: bool = false
 var _bonuses: Array = []     # [{x,y,type,got}] type: "shield"|"speed"|"freeze"
 var _shield_until: int = 0   # Time.get_ticks_msec() до которого действует щит
 var _speed_until: int = 0    # до которого действует скорость
@@ -331,6 +336,10 @@ func _start_game() -> void:
 func _start_level() -> void:
 	_maze = _maze_gen.make_maze()
 	_ham = {"x": 1, "y": 1, "burrowed": false, "burrows": 3}
+	_ham_visual_x = 1.0
+	_ham_visual_y = 1.0
+	_dust_particles.clear()
+	_paused = false
 	_state = "play"
 	_frame = 0
 	_move_timer = 0.0
@@ -433,6 +442,18 @@ func _input(event: InputEvent) -> void:
 	if _state == "credits":
 		_state = "menu"
 		queue_redraw()
+		return
+
+	if kc == KEY_ESCAPE:
+		if _state == "play":
+			_paused = not _paused
+			queue_redraw()
+		elif _paused:
+			_paused = false
+			queue_redraw()
+		return
+
+	if _paused:
 		return
 
 	if kc == KEY_ENTER or kc == KEY_KP_ENTER:
@@ -617,6 +638,7 @@ func _process(delta: float) -> void:
 		queue_redraw()
 		return
 
+	_ham_moving = false  # default off, set true only in play state
 	if _state == "level_up":
 		_level_trans_t += 1
 		if _level_trans_t >= LEVEL_TRANS_DUR:
@@ -637,11 +659,44 @@ func _process(delta: float) -> void:
 		queue_redraw()
 		return
 
+	if _state == "play" and _paused:
+		queue_redraw()
+		return
+
 	if _state == "play":
 		var now_ms: int = Time.get_ticks_msec()
 		_game_time_ms = now_ms - _game_start_ms
 		_llama_bonus = min(C.LLAMA_BONUS_MAX, _game_time_ms / C.LLAMA_BONUS_INTERVAL_MS)
 		_update_particles()
+
+		# Smooth visual position (lerp toward actual cell)
+		_ham_visual_x = lerp(_ham_visual_x, float(_ham.x), 0.28)
+		_ham_visual_y = lerp(_ham_visual_y, float(_ham.y), 0.28)
+
+		# Dust particles update
+		for i in range(_dust_particles.size() - 1, -1, -1):
+			var dp: Dictionary = _dust_particles[i]
+			dp.x += dp.vx
+			dp.y += dp.vy
+			dp.vy += 0.05
+			dp.life -= 1
+			if dp.life <= 0:
+				_dust_particles.remove_at(i)
+
+		# Leg animation flag — every frame based on held keys
+		_ham_moving = not _ham.burrowed and (
+			_held_keys.get(KEY_W, false) or _held_keys.get(KEY_UP, false) or
+			_held_keys.get(KEY_S, false) or _held_keys.get(KEY_DOWN, false) or
+			_held_keys.get(KEY_A, false) or _held_keys.get(KEY_LEFT, false) or
+			_held_keys.get(KEY_D, false) or _held_keys.get(KEY_RIGHT, false) or
+			not _touch_dirs.is_empty())
+		# Spawn dust when moving
+		if _ham_moving and _frame % 4 == 0:
+			var dpx: float = _ham_visual_x * C.CELL + C.CELL * 0.5
+			var dpy: float = _ham_visual_y * C.CELL + C.CELL * 0.5 + 10.0
+			_dust_particles.append({x = dpx + randf_range(-4, 4), y = dpy,
+				vx = randf_range(-0.8, 0.8), vy = randf_range(-0.5, 0.2),
+				life = 12 + randi() % 6, max_life = 18})
 
 		var move_int: float = MOVE_INTERVAL * 0.5 if now_ms < _speed_until else MOVE_INTERVAL
 		_move_timer += delta
@@ -816,6 +871,7 @@ func _update_bonuses(now_ms: int) -> void:
 	for b in _bonuses:
 		if not b.got and b.x == _ham.x and b.y == _ham.y:
 			b.got = true
+			_play(_snd_tp)  # bonus pickup sound
 			_spawn_particles(b.x * C.CELL + C.CELL * 0.5, b.y * C.CELL + C.CELL * 0.5)
 			match b.type:
 				"shield":
@@ -920,8 +976,14 @@ func _draw() -> void:
 			for h in pair.next_pos:
 				_draw_rabbit(h.x, h.y, pair.open_at, now_ms)
 
-	var hcx: float = _ham.x * C.CELL + C.CELL * 0.5
-	var hcy: float = _ham.y * C.CELL + C.CELL * 0.5
+	# Dust particles (behind everything)
+	for dp in _dust_particles:
+		var da: float = float(dp.life) / float(dp.max_life) * 0.35
+		draw_circle(Vector2(dp.x, dp.y), 2.0 + 1.5 * (1.0 - float(dp.life) / float(dp.max_life)),
+			Color(0.72, 0.62, 0.42, da))
+
+	var hcx: float = _ham_visual_x * C.CELL + C.CELL * 0.5
+	var hcy: float = _ham_visual_y * C.CELL + C.CELL * 0.5
 	var now_eff: int = Time.get_ticks_msec()
 	# Shield aura (behind hamster)
 	if now_eff < _shield_until:
@@ -961,12 +1023,11 @@ func _draw() -> void:
 		c.a = a
 		draw_circle(Vector2(p.x, p.y), 3.0 * a + 1.0, c)
 
-	if _state == "play":
-		_draw_fog()
-
 	_draw_hud()
 
-	if _state == "level_up":
+	if _paused and _state == "play":
+		_draw_pause_overlay()
+	elif _state == "level_up":
 		_draw_level_up()
 	elif _state == "lost":
 		_draw_lost_overlay()
@@ -1422,14 +1483,42 @@ func _draw_maze() -> void:
 			var px: float = col * C.CELL
 			var py: float = r * C.CELL
 			if _maze[r][col] == 1:
-				draw_rect(Rect2(px, py, C.CELL, C.CELL),            Color("#1a3358"))
-				draw_rect(Rect2(px, py, C.CELL, 2),                 Color("#25487a"))
-				draw_rect(Rect2(px, py, 2,       C.CELL),           Color("#25487a"))
-				draw_rect(Rect2(px + C.CELL - 2, py, 2,    C.CELL), Color("#0e1f3a"))
-				draw_rect(Rect2(px, py + C.CELL - 2, C.CELL, 2),   Color("#0e1f3a"))
+				# Stone wall base
+				draw_rect(Rect2(px, py, C.CELL, C.CELL), Color("#1a3358"))
+				# Stone texture — subtle variation
+				var h: int = (r * 31 + col * 17) % 7
+				var stone_v: float = 0.02 * float(h) - 0.06
+				draw_rect(Rect2(px + 3, py + 3, C.CELL - 6, C.CELL - 6),
+					Color(0.10 + stone_v, 0.20 + stone_v, 0.35 + stone_v))
+				# Mortar lines
+				if r > 0 and _maze[r-1][col] == 1:
+					draw_rect(Rect2(px + 2, py, C.CELL - 4, 1), Color("#0d1a30"))
+				if col > 0 and _maze[r][col-1] == 1:
+					draw_rect(Rect2(px, py + 2, 1, C.CELL - 4), Color("#0d1a30"))
+				# Top/left highlight
+				draw_rect(Rect2(px, py, C.CELL, 2), Color("#25487a"))
+				draw_rect(Rect2(px, py, 2, C.CELL), Color("#25487a"))
+				# Bottom/right shadow
+				draw_rect(Rect2(px + C.CELL - 2, py, 2, C.CELL), Color("#0e1f3a"))
+				draw_rect(Rect2(px, py + C.CELL - 2, C.CELL, 2), Color("#0e1f3a"))
+				# Drop shadow on floor (right and bottom edges)
+				if col + 1 < C.COLS and _maze[r][col + 1] == 0:
+					draw_rect(Rect2(px + C.CELL, py + 2, 3, C.CELL - 2), Color(0, 0, 0, 0.12))
+				if r + 1 < C.ROWS and _maze[r + 1][col] == 0:
+					draw_rect(Rect2(px + 2, py + C.CELL, C.CELL - 2, 3), Color(0, 0, 0, 0.12))
 			else:
-				var tc: Color = Color("#d4a85a") if (r + col) % 2 == 0 else Color("#ca9e50")
-				draw_rect(Rect2(px, py, C.CELL, C.CELL), tc)
+				# Floor with subtle gradient
+				var base_l: float = 0.78 + 0.04 * float((r + col) % 2)
+				var dist: float = float(r) / float(C.ROWS)
+				var fc := Color(
+					base_l * 0.82 - dist * 0.05,
+					base_l * 0.66 - dist * 0.04,
+					base_l * 0.36 - dist * 0.02
+				)
+				draw_rect(Rect2(px, py, C.CELL, C.CELL), fc)
+				# Tiny specks for floor texture
+				if (r * 13 + col * 7) % 5 == 0:
+					draw_circle(Vector2(px + 12, py + 18), 1.0, Color(0, 0, 0, 0.06))
 
 
 # Port of drawNut() — hamster_maze.html lines 1051-1058
@@ -1441,6 +1530,12 @@ func _draw_nut(x: int, y: int) -> void:
 	_ell(Vector2(cx - 2, cy - 2), 4.0, 6.0, Color("#a04520"), 0.1)
 	_ell(Vector2(cx - 3, cy - 4), 2.0, 3.0, Color(1.0, 0.78, 0.39, 0.35), 0.1)
 	_ell(Vector2(cx,     cy - 8), 4.0, 2.5, Color("#4a6020"))
+	# Sparkle — travels across nut surface
+	var sp_t: float = fmod(float(_frame) * 0.04 + float(x * 7 + y * 13) * 0.3, 1.0)
+	var sp_x: float = cx - 5.0 + sp_t * 10.0
+	var sp_y: float = cy - 4.0 + sin(sp_t * PI) * 3.0
+	var sp_a: float = sin(sp_t * PI) * 0.7
+	draw_circle(Vector2(sp_x, sp_y), 1.5, Color(1.0, 0.95, 0.7, sp_a))
 
 
 # Port of drawRabbitHole() — hamster_maze.html lines 835-858
@@ -1451,6 +1546,9 @@ func _draw_rabbit_hole(x: int, y: int, pair_idx: int) -> void:
 	var styles: Array = RHManager.RH_STYLES
 	var ring_c: Color = styles[pair_idx][0]
 	var glow_c: Color = styles[pair_idx][1]
+	# Outer glow (larger, softer)
+	_ell(Vector2(cx, cy), C.CELL * 0.85, C.CELL * 0.62,
+		Color(glow_c.r, glow_c.g, glow_c.b, 0.08 * pulse))
 	_ell(Vector2(cx, cy), C.CELL * 0.75, C.CELL * 0.52,
 		Color(glow_c.r, glow_c.g, glow_c.b, 0.13 * pulse))
 	_ell(Vector2(cx, cy), C.CELL * 0.55, C.CELL * 0.38,
@@ -1461,6 +1559,14 @@ func _draw_rabbit_hole(x: int, y: int, pair_idx: int) -> void:
 	_ell(Vector2(cx, cy), C.CELL * 0.28, C.CELL * 0.18, Color(1.0, 0.7, 0.0, 0.80 * pulse))
 	_ell(Vector2(cx, cy), C.CELL * 0.16, C.CELL * 0.10, Color(1.0, 0.94, 0.24, pulse))
 	_ell(Vector2(cx, cy), C.CELL * 0.06, C.CELL * 0.04, Color(0.02, 0.01, 0.0, 0.9))
+	# Orbiting sparkles
+	for i in range(3):
+		var angle: float = float(_frame) * 0.06 + float(i) * TAU / 3.0 + pair_idx * 1.5
+		var r: float = C.CELL * 0.38
+		var sx: float = cx + cos(angle) * r
+		var sy: float = cy + sin(angle) * r * 0.65
+		var sa: float = pulse * 0.6
+		draw_circle(Vector2(sx, sy), 1.5, Color(ring_c.r, ring_c.g, ring_c.b, sa))
 
 
 # Port of drawRabbit() — hamster_maze.html lines 860-894
@@ -1492,36 +1598,54 @@ func _draw_hamster(cx: float, cy: float, burrowed: bool) -> void:
 		_ell(Vector2(cx, cy + 5), 14, 9,   Color("#2a0e00"))
 		_ell(Vector2(cx, cy + 4), 9,  5.5, Color("#3e1800"))
 	var m: float = 0.38 if burrowed else 1.0
+	# Leg animation — only when moving
+	var leg_a: float = sin(float(_frame) * 0.35) * 5.0 if (_ham_moving and not burrowed) else 0.0
+	# Shadow
 	_ell(Vector2(cx + 1, cy + 4), 13, 6, Color(0, 0, 0, 0.3 * m))
+	# Body
 	_ell(Vector2(cx,      cy + 2), 13, 11, _ca("#c07840", m))
+	# Belly
 	_ell(Vector2(cx,      cy + 4),  7,  7, _ca("#e8c080", m))
-	_ell(Vector2(cx - 12, cy + 2),  8,  7, _ca("#d89050", m), -0.2)
-	_ell(Vector2(cx + 12, cy + 2),  8,  7, _ca("#d89050", m),  0.2)
+	# Cheeks (rounder, with highlight)
+	_ell(Vector2(cx - 12, cy + 2),  9,  8, _ca("#d89050", m), -0.2)
+	_ell(Vector2(cx + 12, cy + 2),  9,  8, _ca("#d89050", m),  0.2)
+	_ell(Vector2(cx - 13, cy + 0),  4,  3, _ca("#e8a868", m), -0.1)
+	_ell(Vector2(cx + 13, cy + 0),  4,  3, _ca("#e8a868", m),  0.1)
+	# Feet (AFTER body — so they're visible)
+	_ell(Vector2(cx - 8 - leg_a, cy + 13), 5, 4, _ca("#a06030", m))
+	_ell(Vector2(cx + 8 + leg_a, cy + 13), 5, 4, _ca("#a06030", m))
+	# Head
 	_ell(Vector2(cx,      cy - 7), 11, 10, _ca("#c07840", m))
+	# Ears
 	_ell(Vector2(cx -  8, cy - 17), 5, 6,   _ca("#a05530", m), -0.3)
 	_ell(Vector2(cx +  8, cy - 17), 5, 6,   _ca("#a05530", m),  0.3)
 	_ell(Vector2(cx -  8, cy - 17), 2.5, 3.5, _ca("#ffaaaa", m), -0.3)
 	_ell(Vector2(cx +  8, cy - 17), 2.5, 3.5, _ca("#ffaaaa", m),  0.3)
+	# Eyes
 	draw_circle(Vector2(cx - 4, cy - 10), 3.0, _ca("#1a0800", m))
 	draw_circle(Vector2(cx + 4, cy - 10), 3.0, _ca("#1a0800", m))
 	draw_circle(Vector2(cx - 3, cy - 11), 1.2, _ca("#ffffff", m))
 	draw_circle(Vector2(cx + 5, cy - 11), 1.2, _ca("#ffffff", m))
+	# Nose
 	draw_circle(Vector2(cx, cy - 6), 2.0, _ca("#ff8888", m))
+	# Whiskers
 	var wc := Color(1.0, 1.0, 1.0, 0.55 * m)
 	draw_line(Vector2(cx - 2, cy - 5), Vector2(cx - 15, cy - 7), wc, 1.0)
 	draw_line(Vector2(cx - 2, cy - 5), Vector2(cx - 15, cy - 4), wc, 1.0)
 	draw_line(Vector2(cx + 2, cy - 5), Vector2(cx + 15, cy - 7), wc, 1.0)
 	draw_line(Vector2(cx + 2, cy - 5), Vector2(cx + 15, cy - 4), wc, 1.0)
-	_ell(Vector2(cx - 8, cy + 12), 4, 3, _ca("#a06030", m))
-	_ell(Vector2(cx + 8, cy + 12), 4, 3, _ca("#a06030", m))
 
 
 # Transliterated from drawLlama() — hamster_maze.html lines 1140-1180
 func _draw_llama(cx: float, cy: float, s: String, is_red: bool) -> void:
-	var body  := Color("#4a9eff") if not is_red else Color("#ff4a4a")
-	var dark  := Color("#3880dd") if not is_red else Color("#cc2020")
-	var light := Color("#90ccff") if not is_red else Color("#ff9999")
-	var head  := Color("#5aafff") if not is_red else Color("#ff6060")
+	# Blue llama blushes red during chase
+	var angry: float = 0.0
+	if not is_red and s == "chase":
+		angry = 0.5 + 0.2 * sin(float(_frame) * 0.15)
+	var body  := Color("#4a9eff").lerp(Color("#ff4a4a"), angry) if not is_red else Color("#ff4a4a")
+	var dark  := Color("#3880dd").lerp(Color("#cc2020"), angry) if not is_red else Color("#cc2020")
+	var light := Color("#90ccff").lerp(Color("#ff9999"), angry) if not is_red else Color("#ff9999")
+	var head  := Color("#5aafff").lerp(Color("#ff6060"), angry) if not is_red else Color("#ff6060")
 	var snout := Color("#7ac8ff") if not is_red else Color("#ffaaaa")
 	var ear_in := Color("#b0dcff") if not is_red else Color("#ffdddd")
 	var hoof  := Color("#1a50aa") if not is_red else Color("#991010")
@@ -1535,13 +1659,25 @@ func _draw_llama(cx: float, cy: float, s: String, is_red: bool) -> void:
 		var pulse := 0.55 + 0.45 * sin(_frame * 0.22)
 		ac.a = 0.38 * pulse
 		_ell(Vector2(cx, cy + 5), 22, 14, ac)
+	# Shadow
 	_ell(Vector2(cx, cy + 8), 13, 5, Color(0, 0, 0, 0.25))
-	draw_rect(Rect2(cx - 9, cy + 3, 6, 13), dark)
-	draw_rect(Rect2(cx + 3, cy + 3, 6, 13), dark)
-	_ell(Vector2(cx - 6, cy + 16), 4, 2.5, hoof)
-	_ell(Vector2(cx + 6, cy + 16), 4, 2.5, hoof)
+	# Leg animation
+	var ll_a: float = sin(float(_frame) * 0.30) * 5.0
+	# Legs (drawn before body, back pair)
+	draw_rect(Rect2(cx - 9 + ll_a, cy + 5, 5, 12), dark.darkened(0.15))
+	draw_rect(Rect2(cx + 4 - ll_a, cy + 5, 5, 12), dark.darkened(0.15))
+	_ell(Vector2(cx - 7 + ll_a, cy + 17), 3.5, 2.5, hoof.darkened(0.1))
+	_ell(Vector2(cx + 7 - ll_a, cy + 17), 3.5, 2.5, hoof.darkened(0.1))
 	_ell(Vector2(cx, cy + 1), 14, 11, body)
 	_ell(Vector2(cx, cy + 3),  9,  7, light)
+	# Fur patches
+	_ell(Vector2(cx - 6, cy - 2), 4, 3, light.lightened(0.08), -0.3)
+	_ell(Vector2(cx + 5, cy + 5), 3, 2, light.lightened(0.05), 0.2)
+	# Front legs (drawn AFTER body — visible on top)
+	draw_rect(Rect2(cx - 9 - ll_a, cy + 5, 5, 13), dark)
+	draw_rect(Rect2(cx + 4 + ll_a, cy + 5, 5, 13), dark)
+	_ell(Vector2(cx - 7 - ll_a, cy + 18), 4, 2.5, hoof)
+	_ell(Vector2(cx + 7 + ll_a, cy + 18), 4, 2.5, hoof)
 	_ell(Vector2(cx + 13, cy), 4, 6, body, 0.4)
 	var neck_pts := PackedVector2Array([
 		Vector2(cx - 5, cy - 7), Vector2(cx + 5, cy - 7),
@@ -1590,8 +1726,11 @@ func _draw_hud() -> void:
 	var Y: float = C.H
 	var font: Font = ThemeDB.fallback_font
 
-	draw_rect(Rect2(0, Y, C.W, C.HUD), Color("#08080f"))
-	draw_rect(Rect2(0, Y, C.W, 2),     Color("#1a3060"))
+	# HUD gradient background
+	draw_rect(Rect2(0, Y, C.W, C.HUD), Color("#0a0c18"))
+	draw_rect(Rect2(0, Y, C.W, C.HUD * 0.4), Color(0.06, 0.10, 0.22, 0.6))
+	draw_rect(Rect2(0, Y, C.W, 2), Color("#2a4a80"))
+	draw_rect(Rect2(0, Y + C.HUD - 1, C.W, 1), Color("#0a0a14"))
 
 	# Nut counter + progress bar
 	var total_nuts: int = _nuts.size()
@@ -1685,6 +1824,20 @@ func _draw_hud() -> void:
 		else "D-pad — движение   [нора] — закопаться"
 	draw_string(font, Vector2(8, Y + C.HUD - 8),
 		hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("#3a3a5a"))
+
+
+func _draw_pause_overlay() -> void:
+	draw_rect(Rect2(0, 0, C.W, C.H + C.HUD), Color(0, 0, 0, 0.65))
+	var font := ThemeDB.fallback_font
+	var cx: float = C.W * 0.5
+	var cy: float = C.H * 0.5
+	draw_rect(Rect2(cx - 160, cy - 60, 320, 120), Color("#0d1a30"))
+	draw_rect(Rect2(cx - 160, cy - 60, 320, 120), Color("#ffd700", 0.6), false, 2.0)
+	var tw: float = font.get_string_size("ПАУЗА", HORIZONTAL_ALIGNMENT_LEFT, -1, 42).x
+	draw_string(font, Vector2(cx - tw * 0.5, cy + 5), "ПАУЗА",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 42, Color("#ffd700"))
+	draw_string(font, Vector2(cx - 95, cy + 40), "Esc — продолжить",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(1, 1, 1, 0.45))
 
 
 func _draw_level_up() -> void:
